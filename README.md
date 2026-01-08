@@ -4,8 +4,10 @@ Voice-controlled AI assistant for Perplexity on macOS. Capture screenshots and a
 
 ## Quick Start
 
-### 1. Install Dependencies
+### 1. Create Virtual Environment
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 ```
 

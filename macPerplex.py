@@ -13,6 +13,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+import sys
 import time
 import subprocess
 from pathlib import Path
@@ -43,6 +44,150 @@ except ImportError:
 
 # Cache for Perplexity window handle (so we don't search every time)
 PERPLEXITY_WINDOW_HANDLE = None
+
+# Global region selector instance
+REGION_SELECTOR = None
+
+
+# ============ REGION SELECTION WITH QT OVERLAY ============
+class RegionSelector:
+    """
+    Track mouse drag to select a screen region while recording.
+    Uses PySide6/Qt for visual overlay via subprocess (overlay_process.py).
+    Falls back to pynput-only if PySide6 not available.
+    """
+    
+    def __init__(self):
+        self.start_point = None  # Screen coordinates
+        self.end_point = None    # Screen coordinates
+        self.is_selecting = False
+        self.selection_complete = False
+        self._process = None
+        self._result_file = None
+        
+    def start(self):
+        """Start the overlay via subprocess."""
+        import tempfile
+        import os
+        
+        self.start_point = None
+        self.end_point = None
+        self.is_selecting = False
+        self.selection_complete = False
+        
+        # Create temp file for result
+        self._result_file = tempfile.mktemp(suffix='.txt', prefix='region_')
+        
+        # Find overlay_process.py (same directory as this script)
+        script_dir = Path(__file__).parent
+        overlay_script = script_dir / "overlay_process.py"
+        
+        if not overlay_script.exists():
+            print(f"   ⚠ Overlay script not found: {overlay_script}")
+            self._start_pynput_fallback()
+            return
+        
+        # Run as subprocess - use pythonw if available for better GUI behavior
+        python_exe = sys.executable
+        
+        try:
+            # Start subprocess - keep it simple, don't capture output so GUI can work
+            self._process = subprocess.Popen(
+                [python_exe, str(overlay_script), self._result_file]
+            )
+            print("   📐 REGION SELECT: Drag to select, ESC to cancel")
+            print("   📐 (Or just release pedal for window under cursor)")
+            
+        except Exception as e:
+            print(f"   ⚠ Could not start overlay: {e}")
+            self._start_pynput_fallback()
+    
+    def _start_pynput_fallback(self):
+        """Fallback to pynput-only mode (no visual overlay)."""
+        from pynput import mouse
+        
+        def on_click(x, y, button, pressed):
+            from pynput.mouse import Button
+            if button != Button.left:
+                return
+            if pressed:
+                self.start_point = (x, y)
+                self.end_point = (x, y)
+                self.is_selecting = True
+                print(f"   ✓ Selection started at ({x}, {y})")
+            else:
+                if self.is_selecting:
+                    self.end_point = (x, y)
+                    self.is_selecting = False
+                    self.selection_complete = True
+                    region = self.get_region()
+                    if region:
+                        print(f"   ✓ Region selected: {region[2]}x{region[3]} pixels")
+        
+        def on_move(x, y):
+            if self.is_selecting:
+                self.end_point = (x, y)
+        
+        self._mouse_listener = mouse.Listener(on_click=on_click, on_move=on_move)
+        self._mouse_listener.start()
+        print("   📐 (No visual overlay - using mouse tracking)")
+    
+    def stop(self):
+        """Stop the overlay and read result."""
+        import os
+        
+        # Wait for subprocess to finish (with timeout)
+        if self._process:
+            try:
+                self._process.wait(timeout=0.5)
+            except subprocess.TimeoutExpired:
+                self._process.terminate()
+                try:
+                    self._process.wait(timeout=0.5)
+                except:
+                    self._process.kill()
+        
+        # Read result from file
+        if self._result_file:
+            try:
+                if os.path.exists(self._result_file):
+                    with open(self._result_file, 'r') as f:
+                        content = f.read().strip()
+                    if content:
+                        parts = content.split(',')
+                        if len(parts) == 4:
+                            x, y, w, h = map(int, parts)
+                            self.start_point = (x, y)
+                            self.end_point = (x + w, y + h)
+                            self.selection_complete = True
+                            print(f"   ✓ Region: {w}x{h} at ({x}, {y})")
+                    os.unlink(self._result_file)
+            except:
+                pass
+        
+        # Stop pynput listener if it was used
+        if hasattr(self, '_mouse_listener'):
+            self._mouse_listener.stop()
+    
+    def get_region(self):
+        """Get the selected region as (x, y, width, height) or None if no selection."""
+        if not self.selection_complete or not self.start_point or not self.end_point:
+            return None
+        
+        x1, y1 = self.start_point
+        x2, y2 = self.end_point
+        
+        # Normalize coordinates
+        x = min(x1, x2)
+        y = min(y1, y2)
+        width = abs(x2 - x1)
+        height = abs(y2 - y1)
+        
+        # Minimum size threshold
+        if width < 50 or height < 50:
+            return None
+        
+        return (int(x), int(y), int(width), int(height))
 
 
 # ============ PERMISSION CHECKS ============
@@ -283,47 +428,15 @@ def get_window_under_mouse():
         event = CGEventCreate(None)
         mouse_pos = CGEventGetLocation(event)
         mouse_x, mouse_y = mouse_pos.x, mouse_pos.y
-        print(f"   Mouse position: ({mouse_x:.0f}, {mouse_y:.0f})")
         
-        # Show all screens for debugging
+        # Get all screens (for reference)
         screens = NSScreen.screens()
-        print(f"   Monitors detected: {len(screens)}")
-        for i, screen in enumerate(screens):
-            frame = screen.frame()
-            print(f"   - Monitor {i}: origin=({frame.origin.x:.0f}, {frame.origin.y:.0f}) size=({frame.size.width:.0f}x{frame.size.height:.0f})")
         
         # Get all windows
         window_list = CGWindowListCopyWindowInfo(
             kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements,
             kCGNullWindowID
         )
-        
-        # Debug: show first few windows
-        print(f"   Total windows: {len(window_list)}")
-        shown = 0
-        for window in window_list:
-            owner_name = window.get('kCGWindowOwnerName', '')
-            layer = window.get('kCGWindowLayer', -1)
-            if layer != 0:
-                continue
-            bounds = window.get('kCGWindowBounds', {})
-            x = bounds.get('X', 0)
-            y = bounds.get('Y', 0)
-            width = bounds.get('Width', 0)
-            height = bounds.get('Height', 0)
-            window_id = window.get('kCGWindowNumber')
-            
-            if width < 100 or height < 100:
-                continue
-                
-            contains_mouse = x <= mouse_x <= x + width and y <= mouse_y <= y + height
-            marker = "👆" if contains_mouse else "  "
-            skip_marker = " [SKIP]" if owner_name in SKIP_APPS else ""
-            print(f"   {marker} {owner_name}: pos=({x:.0f},{y:.0f}) size=({width:.0f}x{height:.0f}) id={window_id}{skip_marker}")
-            shown += 1
-            if shown >= 8:
-                print(f"   ... and {len([w for w in window_list if w.get('kCGWindowLayer') == 0])} more layer-0 windows")
-                break
         
         # Find the topmost window containing the mouse cursor
         for window in window_list:
@@ -373,7 +486,6 @@ def get_frontmost_window_id():
     bounds is (x, y, width, height) tuple.
     """
     # First, try to get the window under the mouse cursor
-    print("   Looking for window under mouse cursor...")
     window_id, app_name, bounds = get_window_under_mouse()
     if window_id:
         return window_id, app_name, bounds
@@ -448,6 +560,49 @@ def sharpen_image_and_save(input_path, output_path):
             return True
         except:
             return False
+
+
+def capture_region_screenshot(region, screenshot_path):
+    """
+    Capture a specific region of the screen.
+    
+    Args:
+        region: tuple of (x, y, width, height) in screen coordinates
+        screenshot_path: Path to save the screenshot
+    
+    Returns:
+        True if successful, False otherwise
+    """
+    x, y, width, height = region
+    
+    try:
+        # Use screencapture with -R flag for region capture
+        # -R<x,y,w,h> captures a specific region
+        temp_png = Path(str(screenshot_path) + '.temp')
+        
+        result = subprocess.run(
+            ["screencapture", "-x", "-R", f"{x},{y},{width},{height}", "-t", "png", str(temp_png)],
+            capture_output=True,
+            timeout=5
+        )
+        
+        if result.returncode == 0 and temp_png.exists() and temp_png.stat().st_size > 1000:
+            # Apply sharpening and save
+            if sharpen_image_and_save(temp_png, screenshot_path):
+                temp_png.unlink(missing_ok=True)
+                return True
+            else:
+                # Fallback: just rename
+                temp_png.rename(screenshot_path)
+                return True
+        else:
+            if result.stderr:
+                print(f"   ⚠ Region capture failed: {result.stderr.decode().strip()}")
+            return False
+            
+    except Exception as e:
+        print(f"   ⚠ Region capture error: {e}")
+        return False
 
 
 def capture_window_with_quartz(window_id, screenshot_path):
@@ -1023,20 +1178,30 @@ def check_key_match(key, trigger_key_str):
 
 def on_press(key, recorder):
     """Handle key press events - start recording."""
+    global REGION_SELECTOR
+    
     try:
         # Check for screenshot + audio trigger
         if check_key_match(key, TRIGGER_KEY_WITH_SCREENSHOT):
             if not recorder.is_recording:
-                # IMMEDIATELY capture window ID and bounds before anything else!
-                window_id, app_name, bounds = get_frontmost_window_id()
-                
                 recorder.capture_screenshot = True
                 key_display = TRIGGER_KEY_WITH_SCREENSHOT.replace('_r', ' (Right)').replace('_', ' ').title()
                 print("\n" + "="*60)
-                print(f"🦶 {key_display} PRESSED - Capturing {app_name or 'window'} + recording...")
+                print(f"🦶 {key_display} PRESSED - Recording with screenshot...")
                 print("="*60)
-                # Pass the pre-captured window ID and bounds
-                recorder.start_recording(take_screenshot=True, window_id=window_id, app_name=app_name, window_bounds=bounds)
+                
+                # Start region selector for optional drag-to-select
+                REGION_SELECTOR = RegionSelector()
+                REGION_SELECTOR.start()
+                
+                # Store current window info as fallback (in case no region is selected)
+                window_id, app_name, bounds = get_frontmost_window_id()
+                recorder.fallback_window_id = window_id
+                recorder.fallback_app_name = app_name
+                recorder.fallback_bounds = bounds
+                
+                # Start recording audio (no screenshot yet - will capture on release)
+                recorder.start_recording(take_screenshot=False)
         
         # Check for audio-only trigger
         elif check_key_match(key, TRIGGER_KEY_AUDIO_ONLY):
@@ -1052,17 +1217,59 @@ def on_press(key, recorder):
 
 def on_release(key, recorder, driver, wait):
     """Handle key release events - stop recording and process."""
+    global REGION_SELECTOR
+    
     try:
         # Check if either trigger key was released
         if check_key_match(key, TRIGGER_KEY_WITH_SCREENSHOT) or check_key_match(key, TRIGGER_KEY_AUDIO_ONLY):
             if recorder.is_recording:
-                # Get the pre-captured screenshot path (may be None)
-                screenshot_path = recorder.screenshot_path
+                screenshot_path = None
+                
+                # Handle screenshot capture (only for screenshot mode)
+                if recorder.capture_screenshot:
+                    # Stop the region selector
+                    if REGION_SELECTOR:
+                        REGION_SELECTOR.stop()
+                        region = REGION_SELECTOR.get_region()
+                        REGION_SELECTOR = None
+                        
+                        if region:
+                            # User selected a region - capture it
+                            print(f"📸 Capturing selected region...")
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            screenshot_path = Path(f"/tmp/perplexity_screenshot_{timestamp}.png")
+                            
+                            if capture_region_screenshot(region, screenshot_path):
+                                print(f"✓ Region screenshot captured!")
+                            else:
+                                print("⚠ Region capture failed, trying window fallback...")
+                                screenshot_path = None
+                        
+                        # No region selected or region capture failed - use window fallback
+                        if not screenshot_path:
+                            print(f"📸 Capturing window: {getattr(recorder, 'fallback_app_name', 'unknown')}...")
+                            screenshot_path = capture_screenshot_func(
+                                getattr(recorder, 'fallback_window_id', None),
+                                getattr(recorder, 'fallback_app_name', None),
+                                getattr(recorder, 'fallback_bounds', None)
+                            )
+                            if screenshot_path:
+                                print("✓ Window screenshot captured!")
+                            else:
+                                print("⚠ Screenshot capture failed")
+                
+                # Stop audio recording
                 audio_path = recorder.stop_recording()
+                
                 if audio_path:
                     send_to_perplexity(driver, wait, audio_path, screenshot_path)
+                    
     except Exception as e:
         print(f"Error in key release handler: {e}")
+        # Clean up region selector if there was an error
+        if REGION_SELECTOR:
+            REGION_SELECTOR.stop()
+            REGION_SELECTOR = None
 
 
 # ============ CONNECT TO CHROME ============
@@ -1126,12 +1333,13 @@ try:
     print("✅ READY! Two modes:")
     print("")
     print(f"   🖼️  {key1_display} - Audio + Screenshot")
-    print("      Hold, speak, release → sends with image")
+    print("      Hold, speak, release → captures window under cursor")
+    print("      OR drag to select a region while speaking!")
     print("")
     print(f"   🎤 {key2_display} - Audio Only")
     print("      Hold, speak, release → sends without image")
     print("")
-    print("   💡 Using modifier keys or F-keys prevents beeping!")
+    print("   💡 Tip: Drag to select = better OCR for small text!")
     print("   Press Ctrl+C to exit")
     print("="*60 + "\n")
     

@@ -20,3 +20,6 @@ pyobjc-framework-Cocoa>=10.0
 
 # Image processing (sharpening for better OCR)
 Pillow>=10.0.0
+
+# Qt GUI for region selection overlay
+PySide6>=6.5.0

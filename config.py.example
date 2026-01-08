@@ -16,7 +16,8 @@ OPENAI_STT_MODEL = "gpt-4o-transcribe"
 # ============================================================================
 # Use modifier keys to avoid interfering with other apps and prevent beeping
 
-# Primary trigger: Records audio + captures screenshot
+# Primary trigger: Records audio + captures screenshot (with optional region selection)
+# While holding this key, you can drag to select a specific region of the screen
 TRIGGER_KEY_WITH_SCREENSHOT = 'cmd_r'  # Right Command key
 
 # Secondary trigger: Records audio only (no screenshot)

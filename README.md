@@ -37,13 +37,26 @@ python3 macPerplex.py
 ### Two Modes:
 
 **🖼️  Screenshot + Audio** (Left pedal / F13 / Right Cmd)
-- Hold the trigger, speak your question, release
-- Captures the window under your mouse cursor
+- Hold the trigger, speak your question
+- **Option A: Region Select** - Drag to select a specific area of the screen
+- **Option B: Window Capture** - Just release without dragging to capture the window under your cursor
 - Sends screenshot + transcribed audio to Perplexity
 
 **🎤 Audio Only** (Right pedal / F14 / Right Shift)
 - Hold the trigger, speak your question, release
 - Sends transcribed audio to Perplexity without screenshot
+
+### Region Selection (New!)
+
+When using Screenshot + Audio mode, you can select a specific region:
+
+1. Press and hold the trigger (pedal/key)
+2. The screen dims with a semi-transparent overlay
+3. Click and drag to draw a selection rectangle
+4. Release the trigger to capture just that region
+5. If you don't drag, it captures the window under your cursor
+
+**💡 Tip:** Region selection is great for capturing specific parts of a page (like tables or charts) for better OCR accuracy. Works on all monitors!
 
 ## Configuration
 
@@ -57,9 +70,12 @@ Edit `config.py` to customize:
 ## Features
 
 ✅ Voice-to-text using OpenAI Whisper  
-✅ Automatic screenshot capture (focused window or full screen)  
+✅ **Region selection** - drag to capture specific screen areas  
+✅ **Multi-monitor support** - works on all connected displays  
+✅ Automatic window capture (window under mouse cursor)  
 ✅ Automatic Perplexity tab detection  
 ✅ Two input modes (with/without screenshot)  
+✅ High-resolution Retina screenshots with sharpening  
 ✅ No beeping from held keys  
 ✅ Temporary file cleanup  
 ✅ Configurable transcription model
@@ -70,6 +86,7 @@ Edit `config.py` to customize:
 - Python 3.10+
 - Google Chrome
 - OpenAI API key
+- PySide6 (for region selection overlay - installed via requirements.txt)
 
 ## macOS Permissions (Required!)
 
@@ -112,9 +129,9 @@ TRIGGER_KEY_AUDIO_ONLY = 'f14'       # Right pedal - audio only
 ```
 
 ### Usage:
-- **Left pedal (F13)**: Hold, speak, release → sends screenshot + audio
+- **Left pedal (F13)**: Hold, speak, optionally drag to select region, release → sends screenshot + audio
 - **Right pedal (F14)**: Hold, speak, release → sends audio only
-- Keep your mouse cursor over the window you want to capture
+- Drag to select a specific region, or just release to capture window under cursor
 
 ## Troubleshooting
 
@@ -123,7 +140,8 @@ TRIGGER_KEY_AUDIO_ONLY = 'f14'       # Right pedal - audio only
 **Screenshots are black/wrong**: Grant Screen Recording permission, restart Terminal  
 **"This process is not trusted"**: Grant Accessibility permission, restart Terminal  
 **Key not working**: Try holding `fn` key + trigger key  
-**Multi-monitor issues**: The script detects window under mouse cursor  
+**Region overlay not showing**: Make sure PySide6 is installed (`pip install PySide6`)  
+**Multi-monitor selection**: Region selection works on all monitors - just click and drag on any screen  
 
 ## License
 

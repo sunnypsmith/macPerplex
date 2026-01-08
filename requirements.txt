@@ -1,0 +1,19 @@
+# macPerplex Requirements
+# Install with: pip install -r requirements.txt
+
+# Web automation
+selenium>=4.15.0
+
+# Keyboard/mouse input monitoring
+pynput>=1.7.6
+
+# Audio recording
+sounddevice>=0.4.6
+numpy>=1.24.0
+
+# OpenAI API (Whisper speech-to-text)
+openai>=1.0.0
+
+# macOS window capture (PyObjC frameworks)
+pyobjc-framework-Quartz>=10.0
+pyobjc-framework-Cocoa>=10.0

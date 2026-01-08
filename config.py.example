@@ -1,0 +1,54 @@
+# ============================================================================
+# macPerplex Configuration Example
+# ============================================================================
+# Copy this file to config.py and fill in your actual values
+
+# OpenAI API Key for speech-to-text (Whisper)
+# Get your API key from: https://platform.openai.com/api-keys
+OPENAI_API_KEY = "your-openai-api-key-here"
+
+# OpenAI Transcription Model
+# Options: "gpt-4o-transcribe" (faster, better) or "whisper-1" (original)
+OPENAI_STT_MODEL = "gpt-4o-transcribe"
+
+# ============================================================================
+# Trigger Keys
+# ============================================================================
+# Use modifier keys to avoid interfering with other apps and prevent beeping
+
+# Primary trigger: Records audio + captures screenshot
+TRIGGER_KEY_WITH_SCREENSHOT = 'cmd_r'  # Right Command key
+
+# Secondary trigger: Records audio only (no screenshot)
+TRIGGER_KEY_AUDIO_ONLY = 'shift_r'  # Right Shift key
+
+# Available options:
+# - 'cmd_r' (right command)
+# - 'shift_r' (right shift)
+# - 'alt_r' (right option/alt)
+# - 'ctrl_r' (right control)
+# - 'cmd' (left command)
+# - 'shift' (left shift)
+# - 'alt' (left option/alt)
+# - 'ctrl' (left control)
+# - 'f13' (F13 key - great for foot pedals)
+# - 'f14' (F14 key - great for foot pedals)
+# - 'f15' through 'f20' (additional F-keys)
+
+# ============================================================================
+# Audio Recording Settings
+# ============================================================================
+AUDIO_SAMPLE_RATE = 16000  # Hz
+AUDIO_CHANNELS = 1  # Mono
+MAX_RECORDING_DURATION = 60  # Maximum recording duration in seconds
+
+# ============================================================================
+# USB Foot Pedals (Optional)
+# ============================================================================
+# If you have USB foot pedals (like iKKEGOL), configure them to send F13/F14
+# keystrokes using the manufacturer's software (e.g., ElfKey), then set:
+#
+# TRIGGER_KEY_WITH_SCREENSHOT = 'f13'  # Left pedal - audio + screenshot
+# TRIGGER_KEY_AUDIO_ONLY = 'f14'       # Right pedal - audio only
+#
+# See README.md for detailed setup instructions.

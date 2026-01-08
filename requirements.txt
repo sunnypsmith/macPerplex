@@ -17,3 +17,6 @@ openai>=1.0.0
 # macOS window capture (PyObjC frameworks)
 pyobjc-framework-Quartz>=10.0
 pyobjc-framework-Cocoa>=10.0
+
+# Image processing (sharpening for better OCR)
+Pillow>=10.0.0

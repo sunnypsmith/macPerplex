@@ -420,6 +420,36 @@ def get_frontmost_window_id():
         return None, None, None
 
 
+def sharpen_image_and_save(input_path, output_path):
+    """Apply sharpening and save as lossless PNG for better text readability."""
+    try:
+        from PIL import Image, ImageFilter, ImageEnhance
+        
+        img = Image.open(input_path)
+        
+        # Apply unsharp mask for better text clarity
+        # Parameters: radius, percent, threshold
+        img = img.filter(ImageFilter.UnsharpMask(radius=1.5, percent=120, threshold=2))
+        
+        # Slightly increase contrast to make text pop
+        enhancer = ImageEnhance.Contrast(img)
+        img = enhancer.enhance(1.05)
+        
+        # Save as lossless PNG
+        img.save(output_path, 'PNG', optimize=True)
+        print(f"   ✓ Sharpened and saved as lossless PNG")
+        return True
+    except Exception as e:
+        print(f"   ⚠ Sharpening failed: {e}")
+        # Fallback: just copy the file
+        try:
+            import shutil
+            shutil.copy(input_path, output_path)
+            return True
+        except:
+            return False
+
+
 def capture_window_with_quartz(window_id, screenshot_path):
     """Capture a window using CGWindowListCreateImage (works better on multi-monitor)."""
     try:
@@ -428,46 +458,67 @@ def capture_window_with_quartz(window_id, screenshot_path):
             CGRectNull,
             kCGWindowListOptionIncludingWindow,
             kCGWindowImageBoundsIgnoreFraming,
-            kCGWindowImageNominalResolution,
         )
         from Quartz import CGImageDestinationCreateWithURL, CGImageDestinationAddImage, CGImageDestinationFinalize
         from CoreFoundation import CFURLCreateFromFileSystemRepresentation, kCFAllocatorDefault
         import os
         
-        # Capture the specific window
+        # Capture the specific window at FULL Retina resolution (no kCGWindowImageNominalResolution)
+        # This gives us 2x pixels on Retina displays for better text clarity
         image = CGWindowListCreateImage(
             CGRectNull,  # Capture the window's natural bounds
             kCGWindowListOptionIncludingWindow,
             window_id,
-            kCGWindowImageBoundsIgnoreFraming | kCGWindowImageNominalResolution
+            kCGWindowImageBoundsIgnoreFraming  # Full resolution, not nominal
         )
         
         if image is None:
             print(f"   ⚠ CGWindowListCreateImage returned None")
             return False
         
-        # Save to file
+        # Save as PNG (lossless) - first to temp file for sharpening
+        temp_png_path = str(screenshot_path) + '.temp'
         url = CFURLCreateFromFileSystemRepresentation(
             kCFAllocatorDefault,
-            str(screenshot_path).encode('utf-8'),
-            len(str(screenshot_path)),
+            temp_png_path.encode('utf-8'),
+            len(temp_png_path),
             False
         )
         
-        # Create PNG destination
-        from Quartz import kUTTypePNG
-        destination = CGImageDestinationCreateWithURL(url, kUTTypePNG, 1, None)
+        # Create PNG destination (use string UTI - constants moved in newer macOS)
+        destination = CGImageDestinationCreateWithURL(url, 'public.png', 1, None)
         if destination is None:
             print(f"   ⚠ Could not create image destination")
             return False
         
         CGImageDestinationAddImage(destination, image, None)
         
-        if CGImageDestinationFinalize(destination):
-            return True
-        else:
+        if not CGImageDestinationFinalize(destination):
             print(f"   ⚠ Failed to finalize image")
             return False
+        
+        # Apply sharpening and save as PNG (lossless)
+        try:
+            from PIL import Image, ImageFilter, ImageEnhance
+            img = Image.open(temp_png_path)
+            
+            # Apply sharpening for better text clarity
+            img = img.filter(ImageFilter.UnsharpMask(radius=1.5, percent=120, threshold=2))
+            enhancer = ImageEnhance.Contrast(img)
+            img = enhancer.enhance(1.05)
+            
+            # Save as PNG (lossless)
+            img.save(screenshot_path, 'PNG', optimize=True)
+            
+            # Clean up temp file
+            os.unlink(temp_png_path)
+            print(f"   ✓ Captured at Retina resolution, sharpened, saved as lossless PNG")
+            return True
+        except Exception as e:
+            # If PIL fails, just rename the temp file
+            print(f"   ⚠ Sharpening failed ({e}), using raw capture")
+            os.rename(temp_png_path, str(screenshot_path))
+            return True
             
     except Exception as e:
         print(f"   ⚠ Quartz capture error: {e}")
@@ -478,7 +529,7 @@ def capture_screenshot_func(target_window_id=None, target_app_name=None, window_
     """Capture a specific window by ID or bounds, or fall back to full screen."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     
-    # Use /tmp for temporary screenshots
+    # Use /tmp for temporary screenshots (PNG for lossless quality)
     screenshot_path = Path(f"/tmp/perplexity_screenshot_{timestamp}.png")
     
     try:
@@ -498,15 +549,19 @@ def capture_screenshot_func(target_window_id=None, target_app_name=None, window_
             # Second try: screencapture -l (window ID)
             if not window_captured:
                 print(f"   Trying screencapture -l...")
+                temp_png = Path(f"/tmp/perplexity_temp_{timestamp}.png")
                 result = subprocess.run(
-                    ["screencapture", "-x", "-o", "-l", str(target_window_id), "-t", "png", str(screenshot_path)],
+                    ["screencapture", "-x", "-o", "-l", str(target_window_id), "-t", "png", str(temp_png)],
                     capture_output=True,
                     timeout=5
                 )
                 
-                if result.returncode == 0 and screenshot_path.exists() and screenshot_path.stat().st_size > 1000:
-                    print(f"✓ Captured window: {target_app_name or 'unknown'}")
-                    window_captured = True
+                if result.returncode == 0 and temp_png.exists() and temp_png.stat().st_size > 1000:
+                    # Convert to sharpened JPEG
+                    if sharpen_image_and_save(temp_png, screenshot_path):
+                        print(f"✓ Captured window: {target_app_name or 'unknown'}")
+                        window_captured = True
+                    temp_png.unlink(missing_ok=True)
                 else:
                     if result.stderr:
                         print(f"   ⚠ screencapture -l failed: {result.stderr.decode().strip()}")
@@ -517,32 +572,34 @@ def capture_screenshot_func(target_window_id=None, target_app_name=None, window_
             window_id, app_name = get_frontmost_window_id()
             
             if window_id:
+                temp_png = Path(f"/tmp/perplexity_temp2_{timestamp}.png")
                 result = subprocess.run(
-                    ["screencapture", "-x", "-o", "-l", str(window_id), "-t", "png", str(screenshot_path)],
+                    ["screencapture", "-x", "-o", "-l", str(window_id), "-t", "png", str(temp_png)],
                     capture_output=True,
                     timeout=5
                 )
                 
-                if result.returncode == 0 and screenshot_path.exists() and screenshot_path.stat().st_size > 1000:
-                    print(f"✓ Captured: {app_name}")
-                    window_captured = True
+                if result.returncode == 0 and temp_png.exists() and temp_png.stat().st_size > 1000:
+                    if sharpen_image_and_save(temp_png, screenshot_path):
+                        print(f"✓ Captured: {app_name}")
+                        window_captured = True
+                    temp_png.unlink(missing_ok=True)
         
         # If window capture didn't work, fall back to full screen
         if not window_captured:
             print(f"   📸 Falling back to full screen capture...")
             
             # Fallback to full screen
+            temp_png = Path(f"/tmp/perplexity_temp3_{timestamp}.png")
             result = subprocess.run(
-                ["screencapture", "-x", "-t", "png", str(screenshot_path)],
+                ["screencapture", "-x", "-t", "png", str(temp_png)],
                 capture_output=True,
                 timeout=5
             )
-        
-        if result.returncode != 0:
-            print(f"⚠ screencapture returned code {result.returncode}")
-            if result.stderr:
-                print(f"   Error: {result.stderr.decode()}")
-            return None
+            
+            if result.returncode == 0 and temp_png.exists():
+                sharpen_image_and_save(temp_png, screenshot_path)
+                temp_png.unlink(missing_ok=True)
         
         # Verify file exists and has content
         if not screenshot_path.exists():

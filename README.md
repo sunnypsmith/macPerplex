@@ -86,7 +86,10 @@ Edit `config.py` to customize:
 - Python 3.10+
 - Google Chrome
 - OpenAI API key
-- PySide6 (for region selection overlay - installed via requirements.txt)
+- PySide6 (for region selection overlay)
+- Rich (for beautiful terminal output)
+
+All Python dependencies are installed via `requirements.txt`
 
 ## macOS Permissions (Required!)
 

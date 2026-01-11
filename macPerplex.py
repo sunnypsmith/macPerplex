@@ -24,6 +24,12 @@ import numpy as np
 import wave
 from openai import OpenAI
 import socket
+from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
+
+# Rich console for beautiful output
+console = Console()
 
 # Import configuration
 try:
@@ -221,54 +227,54 @@ def check_microphone_permission():
 
 def check_permissions():
     """Check all required macOS permissions and warn if missing."""
-    print("\n🔐 Checking macOS permissions...")
+    console.print("\n[bold cyan]🔐 Checking macOS permissions...[/bold cyan]")
     
     all_ok = True
     
     # Check Accessibility
     accessibility = check_accessibility_permission()
     if accessibility is True:
-        print("   ✓ Accessibility: Granted")
+        console.print("   [green]✓[/green] Accessibility: Granted")
     elif accessibility is False:
-        print("   ❌ Accessibility: NOT GRANTED")
-        print("      → System Settings → Privacy & Security → Accessibility")
-        print("      → Add and enable Terminal (or your terminal app)")
+        console.print("   [red]❌ Accessibility: NOT GRANTED[/red]")
+        console.print("      [yellow]→[/yellow] System Settings → Privacy & Security → Accessibility")
+        console.print("      [yellow]→[/yellow] Add and enable Terminal (or your terminal app)")
         all_ok = False
     else:
-        print("   ? Accessibility: Could not check")
+        console.print("   [yellow]?[/yellow] Accessibility: Could not check")
     
     # Check Screen Recording
     screen_recording = check_screen_recording_permission()
     if screen_recording is True:
-        print("   ✓ Screen Recording: Granted")
+        console.print("   [green]✓[/green] Screen Recording: Granted")
     elif screen_recording is False:
-        print("   ❌ Screen Recording: NOT GRANTED")
-        print("      → System Settings → Privacy & Security → Screen Recording")
-        print("      → Add and enable Terminal (or your terminal app)")
+        console.print("   [red]❌ Screen Recording: NOT GRANTED[/red]")
+        console.print("      [yellow]→[/yellow] System Settings → Privacy & Security → Screen Recording")
+        console.print("      [yellow]→[/yellow] Add and enable Terminal (or your terminal app)")
         all_ok = False
     else:
-        print("   ? Screen Recording: Could not check")
+        console.print("   [yellow]?[/yellow] Screen Recording: Could not check")
     
     # Input Monitoring is usually bundled with Accessibility on modern macOS
-    print("   ℹ️  Input Monitoring: Usually shares Accessibility permission")
+    console.print("   [blue]ℹ️[/blue]  Input Monitoring: Usually shares Accessibility permission")
     
     # Check Microphone
     microphone = check_microphone_permission()
     if microphone is True:
-        print("   ✓ Microphone: Available")
+        console.print("   [green]✓[/green] Microphone: Available")
     elif microphone is False:
-        print("   ❌ Microphone: NOT AVAILABLE")
-        print("      → System Settings → Privacy & Security → Microphone")
-        print("      → Add and enable Terminal (or your terminal app)")
+        console.print("   [red]❌ Microphone: NOT AVAILABLE[/red]")
+        console.print("      [yellow]→[/yellow] System Settings → Privacy & Security → Microphone")
+        console.print("      [yellow]→[/yellow] Add and enable Terminal (or your terminal app)")
         all_ok = False
     else:
-        print("   ? Microphone: Could not check")
+        console.print("   [yellow]?[/yellow] Microphone: Could not check")
     
     if not all_ok:
-        print("\n⚠️  Some permissions missing! The app may not work correctly.")
-        print("   After granting permissions, RESTART Terminal completely (Cmd+Q).\n")
+        console.print("\n[bold yellow]⚠️  Some permissions missing! The app may not work correctly.[/bold yellow]")
+        console.print("   After granting permissions, RESTART Terminal completely (Cmd+Q).\n")
     else:
-        print("   ✓ All permissions OK!\n")
+        console.print("   [bold green]✓ All permissions OK![/bold green]\n")
     
     return all_ok
 
@@ -1275,21 +1281,22 @@ def on_release(key, recorder, driver, wait):
 # ============ CONNECT TO CHROME ============
 # FIRST: Open Chrome with: /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir="/tmp/chrome_dev_profile"
 # Then navigate to perplexity.ai and log in
-print("="*60)
-print("🚀 macPerplex - Voice AI for Perplexity")
-print("="*60)
+console.print(Panel.fit(
+    "[bold cyan]🚀 macPerplex[/bold cyan]\n[dim]Voice AI for Perplexity[/dim]",
+    border_style="cyan"
+))
 
 # Check if OpenAI API key is set
 if not OPENAI_API_KEY or OPENAI_API_KEY.startswith("your-"):
-    print("\n❌ ERROR: OpenAI API key not set!")
-    print("Please edit config.py and set your OpenAI API key.")
-    print("Get one from: https://platform.openai.com/api-keys")
+    console.print("\n[bold red]❌ ERROR: OpenAI API key not set![/bold red]")
+    console.print("Please edit [cyan]config.py[/cyan] and set your OpenAI API key.")
+    console.print("Get one from: [link]https://platform.openai.com/api-keys[/link]")
     exit(1)
 
 # Check macOS permissions
 check_permissions()
 
-print("🔗 Checking for Chrome with remote debugging...")
+console.print("[bold]🔗 Checking for Chrome with remote debugging...[/bold]")
 
 # First, check if Chrome is running in debug mode
 def check_chrome_debug_mode():
@@ -1301,25 +1308,25 @@ def check_chrome_debug_mode():
     return result == 0
 
 if not check_chrome_debug_mode():
-    print("\n❌ ERROR: Chrome is not running in debug mode!")
-    print("\n📋 To start Chrome with remote debugging:")
-    print("   1. Close all Chrome windows")
-    print("   2. Run this command:")
-    print("      /Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --remote-debugging-port=9222 --user-data-dir=\"/tmp/chrome_dev_profile\"")
-    print("   3. Navigate to https://www.perplexity.ai and log in")
-    print("   4. Run macPerplex again")
-    print("\n💡 Tip: Keep that Chrome window open while using macPerplex")
+    console.print("\n[bold red]❌ ERROR: Chrome is not running in debug mode![/bold red]")
+    console.print("\n[bold]📋 To start Chrome with remote debugging:[/bold]")
+    console.print("   [dim]1.[/dim] Close all Chrome windows")
+    console.print("   [dim]2.[/dim] Run this command:")
+    console.print("      [cyan]/Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --remote-debugging-port=9222 --user-data-dir=\"/tmp/chrome_dev_profile\"[/cyan]")
+    console.print("   [dim]3.[/dim] Navigate to [link]https://www.perplexity.ai[/link] and log in")
+    console.print("   [dim]4.[/dim] Run macPerplex again")
+    console.print("\n[bold yellow]💡 Tip:[/bold yellow] Keep that Chrome window open while using macPerplex")
     exit(1)
 
-print("✓ Chrome debug port detected")
-print("🔗 Connecting to Chrome...")
+console.print("[green]✓[/green] Chrome debug port detected")
+console.print("[bold]🔗 Connecting to Chrome...[/bold]")
 
 chrome_options = Options()
 chrome_options.add_experimental_option("debuggerAddress", "127.0.0.1:9222")
 
 try:
     driver = webdriver.Chrome(options=chrome_options)
-    print(f"✓ Connected! Current URL: {driver.current_url}")
+    console.print(f"[green]✓[/green] Connected! Current URL: [dim]{driver.current_url}[/dim]")
     wait = WebDriverWait(driver, 20)
     
     # Create audio recorder
@@ -1329,19 +1336,17 @@ try:
     key1_display = TRIGGER_KEY_WITH_SCREENSHOT.replace('_r', ' (Right)').replace('_', ' ').title()
     key2_display = TRIGGER_KEY_AUDIO_ONLY.replace('_r', ' (Right)').replace('_', ' ').title()
     
-    print("\n" + "="*60)
-    print("✅ READY! Two modes:")
-    print("")
-    print(f"   🖼️  {key1_display} - Audio + Screenshot")
-    print("      Hold, speak, release → captures window under cursor")
-    print("      OR drag to select a region while speaking!")
-    print("")
-    print(f"   🎤 {key2_display} - Audio Only")
-    print("      Hold, speak, release → sends without image")
-    print("")
-    print("   💡 Tip: Drag to select = better OCR for small text!")
-    print("   Press Ctrl+C to exit")
-    print("="*60 + "\n")
+    ready_text = Text()
+    ready_text.append("✅ READY! Two modes:\n\n", style="bold green")
+    ready_text.append(f"   🖼️  {key1_display} - Audio + Screenshot\n", style="bold cyan")
+    ready_text.append("      Hold, speak, release → captures window under cursor\n", style="dim")
+    ready_text.append("      OR drag to select a region while speaking!\n\n", style="dim")
+    ready_text.append(f"   🎤 {key2_display} - Audio Only\n", style="bold yellow")
+    ready_text.append("      Hold, speak, release → sends without image\n\n", style="dim")
+    ready_text.append("   💡 Tip: Drag to select = better OCR for small text!\n", style="italic yellow")
+    ready_text.append("   Press Ctrl+C to exit", style="dim")
+    
+    console.print(Panel(ready_text, border_style="green", expand=False))
     
     # Set up keyboard listener with both press and release handlers
     with keyboard.Listener(
@@ -1351,12 +1356,12 @@ try:
         listener.join()
         
 except KeyboardInterrupt:
-    print("\n\n🛑 Shutting down...")
+    console.print("\n\n[bold yellow]🛑 Shutting down...[/bold yellow]")
 except Exception as e:
-    print(f"\n❌ Error: {e}")
-    print("\n💡 Troubleshooting:")
-    print("   - Make sure Chrome is still running")
-    print("   - Ensure you're on https://www.perplexity.ai")
-    print("   - Try restarting Chrome in debug mode")
-    print("\nSee README.md for full setup instructions")
+    console.print(f"\n[bold red]❌ Error:[/bold red] {e}")
+    console.print("\n[bold yellow]💡 Troubleshooting:[/bold yellow]")
+    console.print("   [dim]- Make sure Chrome is still running[/dim]")
+    console.print("   [dim]- Ensure you're on https://www.perplexity.ai[/dim]")
+    console.print("   [dim]- Try restarting Chrome in debug mode[/dim]")
+    console.print("\n[dim]See README.md for full setup instructions[/dim]")
 

@@ -7,22 +7,37 @@
 
 Voice-controlled AI assistant for Perplexity on macOS. Capture screenshots and ask questions using voice commands.
 
-## Quick Start
+## Installation
 
-### 1. Create Virtual Environment
+### Option 1: Install from GitHub (Recommended)
 ```bash
+# Clone the repository
+git clone https://github.com/sunnypsmith/macPerplex.git
+cd macPerplex
+
+# Create virtual environment
 python3 -m venv .venv
 source .venv/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Configure
+### Option 2: Install Specific Version
+```bash
+# Install directly from GitHub (requires git)
+pip install git+https://github.com/sunnypsmith/macPerplex.git@v1.0.0
+```
+
+## Quick Start
+
+### 1. Configure
 ```bash
 cp config.py.example config.py
 # Edit config.py and add your OpenAI API key
 ```
 
-### 3. Start Chrome with Remote Debugging
+### 2. Start Chrome with Remote Debugging
 ```bash
 /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir="/tmp/chrome_dev_profile"
 ```
@@ -32,7 +47,7 @@ cp config.py.example config.py
 2. Log in to your Perplexity account
 3. Keep this Chrome window open
 
-### 4. Run macPerplex
+### 3. Run macPerplex
 ```bash
 python3 macPerplex.py
 ```

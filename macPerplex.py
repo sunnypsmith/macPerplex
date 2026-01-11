@@ -824,29 +824,29 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
     """Transcribe audio and send to Perplexity with optional screenshot."""
     
     try:
-        print("\n" + "="*60)
-        print("🎯 PROCESSING...")
-        print("="*60)
+        console.print("\n[dim]" + "="*60 + "[/dim]")
+        console.print("[bold cyan]🎯 PROCESSING...[/bold cyan]")
+        console.print("[dim]" + "="*60 + "[/dim]")
         
         if not audio_path:
-            print("❌ No audio recorded, aborting...")
+            console.print("[bold red]❌ No audio recorded, aborting...[/bold red]")
             return
         
         # Step 1: Transcribe audio
         message_text = transcribe_audio(audio_path)
         if not message_text:
-            print("❌ Transcription failed, aborting...")
+            console.print("[bold red]❌ Transcription failed, aborting...[/bold red]")
             return
         
         # Step 2: Check if we have a screenshot (captured earlier)
         if screenshot_path:
-            print(f"📸 Using pre-captured screenshot: {screenshot_path}")
+            console.print(f"[cyan]📸 Using pre-captured screenshot:[/cyan] [dim]{screenshot_path}[/dim]")
         else:
-            print("⏭️  No screenshot (audio-only mode)")
+            console.print("[yellow]⏭️  No screenshot (audio-only mode)[/yellow]")
 
         # Step 4: Find and switch to Perplexity tab
         global PERPLEXITY_WINDOW_HANDLE
-        print("🔍 Looking for Perplexity tab...")
+        console.print("[bold]🔍 Looking for Perplexity tab...[/bold]")
         
         current_handle = driver.current_window_handle
         perplexity_handle = None
@@ -856,7 +856,7 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
             if 'perplexity.ai' in driver.current_url:
                 perplexity_handle = current_handle
                 PERPLEXITY_WINDOW_HANDLE = perplexity_handle
-                print(f"✓ Already on Perplexity tab")
+                console.print("[green]✓[/green] Already on Perplexity tab")
                 
                 # Still need to bring Chrome to front
                 try:
@@ -876,7 +876,7 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
                 driver.switch_to.window(PERPLEXITY_WINDOW_HANDLE)
                 if 'perplexity.ai' in driver.current_url:
                     perplexity_handle = PERPLEXITY_WINDOW_HANDLE
-                    print(f"✓ Switched to cached Perplexity tab")
+                    console.print("[green]✓[/green] Switched to cached Perplexity tab")
                     
                     # Bring Chrome to front
                     try:
@@ -892,56 +892,69 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
                 PERPLEXITY_WINDOW_HANDLE = None
                 driver.switch_to.window(current_handle)
         
-        # If still not found, search through all windows (this will activate them)
+        # If still not found, search through all windows (Selenium requires switching to check URL)
         if not perplexity_handle:
-            print("   Searching all tabs (may briefly show other windows)...")
+            console.print("   [dim]Searching all tabs for perplexity.ai...[/dim]")
+            original_handle = driver.current_window_handle
+            
             for handle in driver.window_handles:
                 try:
                     driver.switch_to.window(handle)
                     if 'perplexity.ai' in driver.current_url:
                         perplexity_handle = handle
                         PERPLEXITY_WINDOW_HANDLE = perplexity_handle
-                        print(f"✓ Found Perplexity tab: {driver.current_url}")
+                        console.print(f"   [green]✓[/green] Found Perplexity tab")
                         break
+                    else:
+                        # Switch back immediately if not the right window
+                        driver.switch_to.window(original_handle)
                 except:
+                    try:
+                        driver.switch_to.window(original_handle)
+                    except:
+                        pass
                     continue
         
         if not perplexity_handle:
-            print("❌ Could not find Perplexity tab!")
-            print("   Please open perplexity.ai in Chrome")
-            driver.switch_to.window(current_handle)
+            console.print("[bold red]❌ Could not find Perplexity tab![/bold red]")
+            console.print("   [yellow]→[/yellow] Please open [link]perplexity.ai[/link] in Chrome")
+            console.print("   [dim]💡 Tip: Keep the Perplexity tab visible/active to avoid searching[/dim]")
+            try:
+                driver.switch_to.window(current_handle)
+            except:
+                pass
             return
         
         # Bring Chrome window to front at macOS level
         try:
-            print("   Bringing Chrome to front...")
+            console.print("   [dim]Bringing Chrome to front...[/dim]")
             subprocess.run([
                 "osascript", "-e",
                 'tell application "Google Chrome" to activate'
             ], check=False, capture_output=True, timeout=2)
             time.sleep(0.5)  # Give time for window to come forward
-            print("   ✓ Chrome activated")
+            console.print("   [green]✓[/green] Chrome activated")
         except Exception as e:
-            print(f"   ⚠ Could not activate Chrome window: {e}")
+            console.print(f"   [yellow]⚠[/yellow] Could not activate Chrome window: {e}")
         
         # Now find the chat input
-        print("🔍 Looking for chat input...")
+        console.print("[bold]🔍 Looking for chat input...[/bold]")
         try:
             chat_input = wait.until(
                 EC.presence_of_element_located((By.XPATH, "//div[@contenteditable='true' and @role='textbox']"))
             )
-            print("✓ Found chat input!")
+            console.print("[green]✓[/green] Found chat input!")
         except Exception as e:
-            print(f"❌ Failed to find chat input: {e}")
-            print(f"   Page title: {driver.title}")
+            console.print(f"[bold red]❌ Failed to find chat input:[/bold red] {e}")
+            console.print(f"   [dim]Page title: {driver.title}[/dim]")
             return
 
         # Step 5: Type the transcribed message FIRST
-        print(f"⌨️  Typing message: \"{message_text}\"")
+        console.print(f"[bold]⌨️  Typing message:[/bold] [cyan]\"{message_text}\"[/cyan]")
         chat_input.click()
         time.sleep(0.5)
         chat_input.send_keys(message_text)
-        print("✓ Message typed!")
+        console.print("[green]✓[/green] Message typed!")
         
         # Wait for any UI updates after typing
         time.sleep(1)
@@ -1103,47 +1116,64 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
         time.sleep(1)
 
         # Step 7: Verify we have content to send
-        print("✓ Ready to send")
+        console.print("[green]✓[/green] Ready to send")
         time.sleep(1)
 
         # Step 8: Click send
-        print("🔍 Looking for send button...")
-        send_button = wait.until(
-            EC.element_to_be_clickable((By.XPATH, "//button[@aria-label='Submit']"))
-        )
-        print("🚀 Clicking send...")
-        time.sleep(0.5)  # Brief pause before clicking
-        send_button.click()
-        print("✓ Send button clicked!")
-
-        # Wait a bit
-        print("✓ Message sent! Waiting 3 seconds...")
-        time.sleep(3)
-
-        print("✅ Done! Check the browser to see the response from Perplexity.")
-        print("="*60)
-        print(f"🦶 Ready for next query (Left pedal = screenshot, Right pedal = audio only)...\n")
+        console.print("[bold]🔍 Looking for send button...[/bold]")
+        try:
+            send_button = wait.until(
+                EC.element_to_be_clickable((By.XPATH, "//button[@aria-label='Submit']"))
+            )
+            console.print("[bold cyan]🚀 Clicking send...[/bold cyan]")
+            
+            # Scroll button into view first
+            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", send_button)
+            time.sleep(0.3)
+            
+            # Try normal click first
+            try:
+                send_button.click()
+                console.print("[green]✓[/green] Send button clicked!")
+            except Exception as click_error:
+                # Fallback to JavaScript click if normal click fails
+                console.print(f"[yellow]⚠[/yellow] Normal click failed, using JavaScript: {click_error}")
+                driver.execute_script("arguments[0].click();", send_button)
+                console.print("[green]✓[/green] Send button clicked (via JavaScript)!")
+            
+            # Wait a bit to see if message was sent
+            console.print("[dim]Waiting for message to send...[/dim]")
+            time.sleep(3)
+            
+            console.print("[bold green]✅ Done![/bold green] Check the browser to see the response from Perplexity.")
+            console.print("[dim]" + "="*60 + "[/dim]")
+            console.print("[bold]🦶 Ready for next query[/bold] [dim](Left pedal = screenshot, Right pedal = audio only)...[/dim]\n")
+            
+        except Exception as button_error:
+            console.print(f"[bold red]❌ Could not find/click send button:[/bold red] {button_error}")
+            console.print("[yellow]💡 Tip:[/yellow] Make sure the Perplexity page is fully loaded")
+            console.print("[dim]The text was typed but not sent. You can click send manually.[/dim]\n")
         
     except Exception as e:
-        print(f"❌ Error: {e}")
-        print(f"🦶 Try again (Left pedal = screenshot, Right pedal = audio only)...\n")
+        console.print(f"[bold red]❌ Error:[/bold red] {e}")
+        console.print("[bold]🦶 Try again[/bold] [dim](Left pedal = screenshot, Right pedal = audio only)...[/dim]\n")
     
     finally:
         # Clean up temporary files
         if audio_path and Path(audio_path).exists():
             try:
                 Path(audio_path).unlink()
-                print(f"🗑️  Cleaned up audio file")
+                console.print("[dim]🗑️  Cleaned up audio file[/dim]")
             except Exception as e:
-                print(f"⚠ Could not delete audio file: {e}")
+                console.print(f"[yellow]⚠[/yellow] Could not delete audio file: {e}")
         
         # Clean up screenshot
         if screenshot_path and Path(screenshot_path).exists():
             try:
                 Path(screenshot_path).unlink()
-                print(f"🗑️  Cleaned up screenshot file")
+                console.print("[dim]🗑️  Cleaned up screenshot file[/dim]")
             except Exception as e:
-                print(f"⚠ Could not delete screenshot file: {e}")
+                console.print(f"[yellow]⚠[/yellow] Could not delete screenshot file: {e}")
 
 
 # ============ KEYBOARD LISTENER ============
@@ -1343,7 +1373,9 @@ try:
     ready_text.append("      OR drag to select a region while speaking!\n\n", style="dim")
     ready_text.append(f"   🎤 {key2_display} - Audio Only\n", style="bold yellow")
     ready_text.append("      Hold, speak, release → sends without image\n\n", style="dim")
-    ready_text.append("   💡 Tip: Drag to select = better OCR for small text!\n", style="italic yellow")
+    ready_text.append("   💡 Tips:\n", style="italic yellow")
+    ready_text.append("      • Drag to select = better OCR for small text\n", style="dim")
+    ready_text.append("      • Keep Perplexity tab visible for faster switching\n", style="dim")
     ready_text.append("   Press Ctrl+C to exit", style="dim")
     
     console.print(Panel(ready_text, border_style="green", expand=False))

@@ -27,6 +27,8 @@ import socket
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
+from rich.live import Live
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
 
 # Rich console for beautiful output
 console = Console()
@@ -316,13 +318,15 @@ def check_permissions():
 
 # ============ AUDIO RECORDING ============
 class AudioRecorder:
-    """Simple push-to-talk audio recorder."""
+    """Simple push-to-talk audio recorder with live visualization."""
     def __init__(self):
         self.is_recording = False
         self.audio_chunks = []
         self.stream = None
         self.capture_screenshot = True  # Track whether to capture screenshot
         self.screenshot_path = None  # Store screenshot taken at start
+        self.live_display = None  # Rich Live display for audio visualization
+        self.start_time = None  # Track recording start time
     
     def start_recording(self, take_screenshot=False, window_id=None, app_name=None, window_bounds=None):
         """Start recording audio. Optionally capture screenshot of specified window."""
@@ -344,31 +348,56 @@ class AudioRecorder:
         
         mode = "with screenshot" if self.capture_screenshot else "audio only"
         console.print(f"[bold]🎤 Recording {mode}...[/bold] [dim](release pedal to stop)[/dim]")
-        console.print("   [dim]Audio levels:[/dim] ", end="")
+        
+        self.start_time = time.time()
         
         def audio_callback(indata, frames, time_info, status):
-            if status:
-                console.print(f"\n[yellow]Status: {status}[/yellow]")
-            
             # Calculate RMS (volume level)
             rms = np.sqrt(np.mean(indata**2))
             
             # Store audio data
             self.audio_chunks.append(indata.copy())
             
-            # Visual feedback - use console.print without markup to avoid escape codes
-            import sys
-            if rms > 0.02:
-                sys.stdout.write("█")
-                sys.stdout.flush()
-            elif rms > 0.01:
-                sys.stdout.write("▓")
-                sys.stdout.flush()
-            else:
-                sys.stdout.write(".")
-                sys.stdout.flush()
+            # Update live display with audio visualization
+            if self.live_display and self.start_time:
+                elapsed = time.time() - self.start_time
+                
+                # Create visual bar based on audio level
+                bar_length = int(rms * 50)  # Scale to reasonable length
+                bar_length = min(bar_length, 40)  # Cap at 40
+                
+                if rms > 0.02:
+                    bar = "█" * bar_length
+                    color = "green"
+                elif rms > 0.01:
+                    bar = "▓" * bar_length
+                    color = "yellow"
+                else:
+                    bar = "░" * max(1, bar_length)
+                    color = "dim"
+                
+                # Format elapsed time
+                mins = int(elapsed // 60)
+                secs = int(elapsed % 60)
+                time_str = f"{mins:02d}:{secs:02d}"
+                
+                display_text = Text()
+                display_text.append("🔴 RECORDING ", style="bold red")
+                display_text.append(f"[{time_str}]", style="cyan")
+                display_text.append("\n")
+                display_text.append("Audio: ", style="dim")
+                display_text.append(bar, style=color)
+                
+                try:
+                    self.live_display.update(Panel(display_text, border_style="red", width=60))
+                except:
+                    pass
         
         try:
+            # Start live display
+            self.live_display = Live(console=console, refresh_per_second=10)
+            self.live_display.start()
+            
             self.stream = sd.InputStream(
                 samplerate=AUDIO_SAMPLE_RATE,
                 channels=AUDIO_CHANNELS,
@@ -380,6 +409,9 @@ class AudioRecorder:
         except Exception as e:
             console.print(f"\n[bold red]❌ Error starting recording:[/bold red] {e}")
             self.is_recording = False
+            if self.live_display:
+                self.live_display.stop()
+                self.live_display = None
     
     def stop_recording(self):
         """Stop recording and save audio file."""
@@ -388,13 +420,18 @@ class AudioRecorder:
         
         self.is_recording = False
         
+        # Stop live display
+        if self.live_display:
+            self.live_display.stop()
+            self.live_display = None
+        
         try:
             if self.stream:
                 self.stream.stop()
                 self.stream.close()
                 self.stream = None
             
-            console.print("\n[green]✓ Recording stopped[/green]")
+            console.print("[green]✓ Recording stopped[/green]")
             
             if not self.audio_chunks:
                 console.print("[yellow]⚠ No audio recorded[/yellow]")
@@ -428,22 +465,27 @@ class AudioRecorder:
 def transcribe_audio(audio_path):
     """Transcribe audio using OpenAI Whisper API."""
     try:
-        print("🔄 Transcribing audio...")
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold cyan]Transcribing audio..."),
+            console=console
+        ) as progress:
+            task = progress.add_task("transcribe", total=None)
+            
+            client = OpenAI(api_key=OPENAI_API_KEY)
+            
+            with open(audio_path, "rb") as audio_file:
+                transcript = client.audio.transcriptions.create(
+                    model=OPENAI_STT_MODEL,
+                    file=audio_file,
+                    response_format="text"
+                )
         
-        client = OpenAI(api_key=OPENAI_API_KEY)
-        
-        with open(audio_path, "rb") as audio_file:
-            transcript = client.audio.transcriptions.create(
-                model=OPENAI_STT_MODEL,
-                file=audio_file,
-                response_format="text"
-            )
-        
-        print(f"✓ Transcription: \"{transcript}\"")
+        console.print(f"[green]✓ Transcription:[/green] [cyan]\"{transcript}\"[/cyan]")
         return transcript.strip()
         
     except Exception as e:
-        print(f"❌ Error transcribing audio: {e}")
+        console.print(f"[bold red]❌ Error transcribing audio:[/bold red] {e}")
         return None
 
 
@@ -1107,50 +1149,49 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
                         except Exception as e:
                             print(f"   ⚠ Could not verify file: {e}")
                 
-                # Wait for upload to actually complete
-                print("   Waiting for upload to complete...")
-                
+                # Wait for upload to actually complete with progress spinner
                 upload_complete = False
                 max_wait = 15  # Wait up to 15 seconds for upload
                 
-                for i in range(max_wait):
-                    try:
-                        # Look for visual indicators that file was uploaded
-                        # Check for image preview, thumbnail, or remove button
-                        indicators = driver.find_elements(By.XPATH, 
-                            "//img[contains(@src, 'blob:') or contains(@src, 'data:image')] | "
-                            "//div[contains(@class, 'preview')] | "
-                            "//button[contains(@aria-label, 'Remove')] | "
-                            "*[contains(@class, 'file') or contains(@class, 'attachment')]"
-                        )
-                        
-                        # Filter to only visible elements
-                        visible_indicators = [ind for ind in indicators if ind.is_displayed()]
-                        
-                        if visible_indicators:
-                            print(f"✓ Upload complete! Found visual indicator")
-                            upload_complete = True
-                            break
-                        
-                        # Show progress every 3 seconds
-                        if i > 0 and i % 3 == 0:
-                            print(f"   Still uploading... {i}s")
-                        
-                        time.sleep(1)
-                        
-                    except Exception as e:
-                        pass
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn("[bold yellow]Uploading screenshot..."),
+                    TimeElapsedColumn(),
+                    console=console
+                ) as progress:
+                    task = progress.add_task("upload", total=max_wait)
+                    
+                    for i in range(max_wait):
+                        try:
+                            # Look for visual indicators that file was uploaded
+                            # Check for image preview, thumbnail, or remove button
+                            indicators = driver.find_elements(By.XPATH, 
+                                "//img[contains(@src, 'blob:') or contains(@src, 'data:image')] | "
+                                "//div[contains(@class, 'preview')] | "
+                                "//button[contains(@aria-label, 'Remove')] | "
+                                "*[contains(@class, 'file') or contains(@class, 'attachment')]"
+                            )
+                            
+                            # Filter to only visible elements
+                            visible_indicators = [ind for ind in indicators if ind.is_displayed()]
+                            
+                            if visible_indicators:
+                                upload_complete = True
+                                break
+                            
+                            progress.advance(task)
+                            time.sleep(1)
+                            
+                        except Exception as e:
+                            pass
                 
-                if not upload_complete:
-                    print(f"⚠ No visual confirmation after {max_wait}s")
-                    print("   Giving extra time for upload to complete...")
-                    # Wait extra time to be safe with large files
-                    time.sleep(5)
+                if upload_complete:
+                    console.print("[green]✓ Upload complete![/green]")
+                    time.sleep(1)
                 else:
-                    # Extra second after confirmation
-                    time.sleep(2)
-                
-                print("✓ Upload complete, proceeding with send...")
+                    console.print(f"[yellow]⚠ No visual confirmation after {max_wait}s[/yellow]")
+                    console.print("[dim]   Giving extra time for upload to complete...[/dim]")
+                    time.sleep(5)
         
         # Wait a moment for any UI updates
         time.sleep(1)

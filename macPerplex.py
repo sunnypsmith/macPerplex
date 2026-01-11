@@ -24,8 +24,6 @@ import numpy as np
 import wave
 from openai import OpenAI
 import socket
-import termios
-import tty
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -55,6 +53,42 @@ PERPLEXITY_WINDOW_HANDLE = None
 
 # Global region selector instance
 REGION_SELECTOR = None
+
+
+# ============ AUDIO FEEDBACK ============
+def play_beep(frequency=800, duration=0.1, volume=0.3):
+    """Play a simple beep tone for audio feedback."""
+    try:
+        sample_rate = 44100
+        samples = int(sample_rate * duration)
+        t = np.linspace(0, duration, samples, False)
+        tone = volume * np.sin(2 * np.pi * frequency * t)
+        sd.play(tone, sample_rate)
+        sd.wait()
+    except Exception as e:
+        # Don't let beep failures break the app
+        pass
+
+def play_double_beep():
+    """Play double beep for screenshot + audio mode."""
+    try:
+        play_beep(800, 0.08, 0.25)  # First beep
+        time.sleep(0.05)
+        play_beep(1000, 0.08, 0.25)  # Second beep (higher)
+    except:
+        pass
+
+def play_start_beep():
+    """Play single beep for audio-only mode start."""
+    play_beep(900, 0.1, 0.3)
+
+def play_stop_beep():
+    """Play beep when recording stops."""
+    play_beep(700, 0.12, 0.3)  # Lower tone
+
+def play_submit_beep():
+    """Play beep when message is submitted."""
+    play_beep(1200, 0.15, 0.25)  # Higher, longer tone
 
 
 # ============ REGION SELECTION WITH QT OVERLAY ============
@@ -289,7 +323,6 @@ class AudioRecorder:
         self.stream = None
         self.capture_screenshot = True  # Track whether to capture screenshot
         self.screenshot_path = None  # Store screenshot taken at start
-        self.old_terminal_settings = None  # Store terminal settings for echo suppression
     
     def start_recording(self, take_screenshot=False, window_id=None, app_name=None, window_bounds=None):
         """Start recording audio. Optionally capture screenshot of specified window."""
@@ -308,15 +341,6 @@ class AudioRecorder:
                 console.print("[green]✓ Screenshot captured![/green]")
             else:
                 console.print("[yellow]⚠ Screenshot failed, continuing with audio only[/yellow]")
-        
-        # Suppress terminal echo to prevent F-key escape sequences from appearing
-        try:
-            self.old_terminal_settings = termios.tcgetattr(sys.stdin)
-            new_settings = termios.tcgetattr(sys.stdin)
-            new_settings[3] = new_settings[3] & ~termios.ECHO  # Disable echo
-            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, new_settings)
-        except:
-            pass  # If we can't suppress echo, continue anyway
         
         mode = "with screenshot" if self.capture_screenshot else "audio only"
         console.print(f"[bold]🎤 Recording {mode}...[/bold] [dim](release pedal to stop)[/dim]")
@@ -356,13 +380,6 @@ class AudioRecorder:
         except Exception as e:
             console.print(f"\n[bold red]❌ Error starting recording:[/bold red] {e}")
             self.is_recording = False
-            # Restore terminal settings if recording failed
-            if self.old_terminal_settings:
-                try:
-                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_terminal_settings)
-                    self.old_terminal_settings = None
-                except:
-                    pass
     
     def stop_recording(self):
         """Stop recording and save audio file."""
@@ -370,14 +387,6 @@ class AudioRecorder:
             return None
         
         self.is_recording = False
-        
-        # Restore terminal echo
-        if self.old_terminal_settings:
-            try:
-                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_terminal_settings)
-                self.old_terminal_settings = None
-            except:
-                pass
         
         try:
             if self.stream:
@@ -1165,11 +1174,13 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
             # Try normal click first
             try:
                 send_button.click()
+                play_submit_beep()  # Audio feedback
                 console.print("[green]✓[/green] Send button clicked!")
             except Exception as click_error:
                 # Fallback to JavaScript click if normal click fails
                 console.print(f"[yellow]⚠[/yellow] Normal click failed, using JavaScript: {click_error}")
                 driver.execute_script("arguments[0].click();", send_button)
+                play_submit_beep()  # Audio feedback
                 console.print("[green]✓[/green] Send button clicked (via JavaScript)!")
             
             # Wait a bit to see if message was sent
@@ -1251,11 +1262,12 @@ def on_press(key, recorder):
         # Check for screenshot + audio trigger
         if check_key_match(key, TRIGGER_KEY_WITH_SCREENSHOT):
             if not recorder.is_recording:
+                play_double_beep()  # Audio feedback
                 recorder.capture_screenshot = True
                 key_display = TRIGGER_KEY_WITH_SCREENSHOT.replace('_r', ' (Right)').replace('_', ' ').title()
-                print("\n" + "="*60)
-                print(f"🦶 {key_display} PRESSED - Recording with screenshot...")
-                print("="*60)
+                console.print("\n[dim]" + "="*60 + "[/dim]")
+                console.print(f"[bold cyan]🦶 {key_display} PRESSED[/bold cyan] - Recording with screenshot...")
+                console.print("[dim]" + "="*60 + "[/dim]")
                 
                 # Start region selector for optional drag-to-select
                 REGION_SELECTOR = RegionSelector()
@@ -1273,11 +1285,12 @@ def on_press(key, recorder):
         # Check for audio-only trigger
         elif check_key_match(key, TRIGGER_KEY_AUDIO_ONLY):
             if not recorder.is_recording:
+                play_start_beep()  # Audio feedback
                 recorder.capture_screenshot = False
                 key_display = TRIGGER_KEY_AUDIO_ONLY.replace('_r', ' (Right)').replace('_', ' ').title()
-                print("\n" + "="*60)
-                print(f"🦶 {key_display} PRESSED - Recording audio only...")
-                print("="*60)
+                console.print("\n[dim]" + "="*60 + "[/dim]")
+                console.print(f"[bold yellow]🦶 {key_display} PRESSED[/bold yellow] - Recording audio only...")
+                console.print("[dim]" + "="*60 + "[/dim]")
                 recorder.start_recording(take_screenshot=False)
     except Exception as e:
         print(f"Error in key press handler: {e}")
@@ -1290,6 +1303,7 @@ def on_release(key, recorder, driver, wait):
         # Check if either trigger key was released
         if check_key_match(key, TRIGGER_KEY_WITH_SCREENSHOT) or check_key_match(key, TRIGGER_KEY_AUDIO_ONLY):
             if recorder.is_recording:
+                play_stop_beep()  # Audio feedback
                 screenshot_path = None
                 
                 # Handle screenshot capture (only for screenshot mode)

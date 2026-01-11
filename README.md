@@ -72,11 +72,12 @@ Edit `config.py` to customize:
 ✅ Voice-to-text using OpenAI Whisper  
 ✅ **Region selection** - drag to capture specific screen areas  
 ✅ **Multi-monitor support** - works on all connected displays  
+✅ **Audio feedback** - distinct tones for start/stop/submit actions  
 ✅ Automatic window capture (window under mouse cursor)  
 ✅ Automatic Perplexity tab detection  
 ✅ Two input modes (with/without screenshot)  
 ✅ High-resolution Retina screenshots with sharpening  
-✅ No beeping from held keys  
+✅ Beautiful terminal UI with Rich library  
 ✅ Temporary file cleanup  
 ✅ Configurable transcription model
 

@@ -54,10 +54,11 @@ Repository = "https://github.com/sunnypsmith/macPerplex"
 Issues = "https://github.com/sunnypsmith/macPerplex/issues"
 
 [project.scripts]
-macperplex = "macPerplex:main"
+macperplex = "macperplex.main:main"
 
 [tool.setuptools]
-py-modules = ["macPerplex", "overlay_process"]
+packages = ["macperplex"]
+package-dir = {"" = "src"}
 
 [tool.black]
 line-length = 100

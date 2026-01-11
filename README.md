@@ -1,5 +1,10 @@
 # macPerplex 🎤📸
 
+[![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)](https://www.apple.com/macos/)
+[![Status](https://img.shields.io/badge/status-stable-brightgreen.svg)]()
+
 Voice-controlled AI assistant for Perplexity on macOS. Capture screenshots and ask questions using voice commands.
 
 ## Quick Start

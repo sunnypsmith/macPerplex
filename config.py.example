@@ -11,6 +11,14 @@ OPENAI_API_KEY = "your-openai-api-key-here"
 # Options: "gpt-4o-transcribe" (faster, better) or "whisper-1" (original)
 OPENAI_STT_MODEL = "gpt-4o-transcribe"
 
+# Transcription Language (ISO 639-1 code)
+# Constrains Whisper to a specific language for better accuracy and prevents
+# unexpected languages from appearing in transcription
+# Common options: "en" (English), "es" (Spanish), "fr" (French), "de" (German), 
+#                 "zh" (Chinese), "ja" (Japanese), "pt" (Portuguese), "it" (Italian)
+# Full list: https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes
+TRANSCRIPTION_LANGUAGE = "en"
+
 # ============================================================================
 # Trigger Keys
 # ============================================================================

@@ -63,6 +63,11 @@ When using Screenshot + Audio mode, you can select a specific region:
 Edit `config.py` to customize:
 - `OPENAI_API_KEY` - Your OpenAI API key
 - `OPENAI_STT_MODEL` - Transcription model (gpt-4o-transcribe or whisper-1)
+- `TRANSCRIPTION_LANGUAGE` - Language code (default: "en" for English)
+  - Constrains transcription to specific language for better accuracy
+  - Prevents unexpected languages appearing in transcription
+  - Common options: "en", "es", "fr", "de", "zh", "ja"
+  - [Full list of ISO 639-1 codes](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes)
 - `TRIGGER_KEY_WITH_SCREENSHOT` - Key for screenshot mode (default: cmd_r)
 - `TRIGGER_KEY_AUDIO_ONLY` - Key for audio-only mode (default: shift_r)
 - Audio recording settings

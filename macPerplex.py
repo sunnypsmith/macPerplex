@@ -38,6 +38,7 @@ try:
     from config import (
         OPENAI_API_KEY,
         OPENAI_STT_MODEL,
+        TRANSCRIPTION_LANGUAGE,
         TRIGGER_KEY_WITH_SCREENSHOT,
         TRIGGER_KEY_AUDIO_ONLY,
         AUDIO_SAMPLE_RATE,
@@ -478,6 +479,7 @@ def transcribe_audio(audio_path):
                 transcript = client.audio.transcriptions.create(
                     model=OPENAI_STT_MODEL,
                     file=audio_file,
+                    language=TRANSCRIPTION_LANGUAGE,
                     response_format="text"
                 )
         

@@ -24,6 +24,8 @@ import numpy as np
 import wave
 from openai import OpenAI
 import socket
+import termios
+import tty
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -287,6 +289,7 @@ class AudioRecorder:
         self.stream = None
         self.capture_screenshot = True  # Track whether to capture screenshot
         self.screenshot_path = None  # Store screenshot taken at start
+        self.old_terminal_settings = None  # Store terminal settings for echo suppression
     
     def start_recording(self, take_screenshot=False, window_id=None, app_name=None, window_bounds=None):
         """Start recording audio. Optionally capture screenshot of specified window."""
@@ -299,20 +302,29 @@ class AudioRecorder:
         
         # Capture screenshot using the pre-captured window ID and bounds
         if take_screenshot:
-            print(f"📸 Capturing screenshot of {app_name or 'window'}...")
+            console.print(f"[cyan]📸 Capturing screenshot of {app_name or 'window'}...[/cyan]")
             self.screenshot_path = capture_screenshot_func(window_id, app_name, window_bounds)
             if self.screenshot_path:
-                print("✓ Screenshot captured!")
+                console.print("[green]✓ Screenshot captured![/green]")
             else:
-                print("⚠ Screenshot failed, continuing with audio only")
+                console.print("[yellow]⚠ Screenshot failed, continuing with audio only[/yellow]")
+        
+        # Suppress terminal echo to prevent F-key escape sequences from appearing
+        try:
+            self.old_terminal_settings = termios.tcgetattr(sys.stdin)
+            new_settings = termios.tcgetattr(sys.stdin)
+            new_settings[3] = new_settings[3] & ~termios.ECHO  # Disable echo
+            termios.tcsetattr(sys.stdin, termios.TCSADRAIN, new_settings)
+        except:
+            pass  # If we can't suppress echo, continue anyway
         
         mode = "with screenshot" if self.capture_screenshot else "audio only"
-        print(f"🎤 Recording {mode}... (release pedal to stop)")
-        print("   Audio levels: ", end="", flush=True)
+        console.print(f"[bold]🎤 Recording {mode}...[/bold] [dim](release pedal to stop)[/dim]")
+        console.print("   [dim]Audio levels:[/dim] ", end="")
         
         def audio_callback(indata, frames, time_info, status):
             if status:
-                print(f"\nStatus: {status}")
+                console.print(f"\n[yellow]Status: {status}[/yellow]")
             
             # Calculate RMS (volume level)
             rms = np.sqrt(np.mean(indata**2))
@@ -320,13 +332,17 @@ class AudioRecorder:
             # Store audio data
             self.audio_chunks.append(indata.copy())
             
-            # Visual feedback
+            # Visual feedback - use console.print without markup to avoid escape codes
+            import sys
             if rms > 0.02:
-                print("█", end="", flush=True)
+                sys.stdout.write("█")
+                sys.stdout.flush()
             elif rms > 0.01:
-                print("▓", end="", flush=True)
+                sys.stdout.write("▓")
+                sys.stdout.flush()
             else:
-                print(".", end="", flush=True)
+                sys.stdout.write(".")
+                sys.stdout.flush()
         
         try:
             self.stream = sd.InputStream(
@@ -338,8 +354,15 @@ class AudioRecorder:
             )
             self.stream.start()
         except Exception as e:
-            print(f"\n❌ Error starting recording: {e}")
+            console.print(f"\n[bold red]❌ Error starting recording:[/bold red] {e}")
             self.is_recording = False
+            # Restore terminal settings if recording failed
+            if self.old_terminal_settings:
+                try:
+                    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_terminal_settings)
+                    self.old_terminal_settings = None
+                except:
+                    pass
     
     def stop_recording(self):
         """Stop recording and save audio file."""
@@ -348,16 +371,24 @@ class AudioRecorder:
         
         self.is_recording = False
         
+        # Restore terminal echo
+        if self.old_terminal_settings:
+            try:
+                termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self.old_terminal_settings)
+                self.old_terminal_settings = None
+            except:
+                pass
+        
         try:
             if self.stream:
                 self.stream.stop()
                 self.stream.close()
                 self.stream = None
             
-            print("\n✓ Recording stopped")
+            console.print("\n[green]✓ Recording stopped[/green]")
             
             if not self.audio_chunks:
-                print("⚠ No audio recorded")
+                console.print("[yellow]⚠ No audio recorded[/yellow]")
                 return None
             
             # Combine all chunks
@@ -377,11 +408,11 @@ class AudioRecorder:
                 wf.writeframes(audio_int16.tobytes())
             
             duration = len(audio_data) / AUDIO_SAMPLE_RATE
-            print(f"✓ Audio saved: {audio_path} ({duration:.1f} seconds)")
+            console.print(f"[green]✓ Audio saved:[/green] [dim]{audio_path}[/dim] [cyan]({duration:.1f} seconds)[/cyan]")
             return str(audio_path)
             
         except Exception as e:
-            print(f"❌ Error stopping recording: {e}")
+            console.print(f"[bold red]❌ Error stopping recording:[/bold red] {e}")
             return None
 
 

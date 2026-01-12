@@ -13,6 +13,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from selenium.common.exceptions import StaleElementReferenceException
 import sys
 import time
 import subprocess
@@ -1240,18 +1241,30 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
                                 "*[contains(@class, 'file') or contains(@class, 'attachment')]"
                             )
                             
-                            # Filter to only visible elements
-                            visible_indicators = [ind for ind in indicators if ind.is_displayed()]
+                            # Filter to only visible elements (may throw StaleElementReferenceException)
+                            visible_indicators = []
+                            for ind in indicators:
+                                try:
+                                    if ind.is_displayed():
+                                        visible_indicators.append(ind)
+                                except StaleElementReferenceException:
+                                    # Element removed from DOM during check, skip it
+                                    continue
                             
                             if visible_indicators:
                                 upload_complete = True
                                 break
                             
-                            progress.advance(task)
-                            time.sleep(1)
-                            
-                        except Exception as e:
+                        except StaleElementReferenceException:
+                            # DOM changed while finding elements - this is expected, retry next iteration
                             pass
+                        
+                        except Exception as e:
+                            # Unexpected error - log it for debugging
+                            console.print(f"[dim]⚠ Upload check error (will retry): {e}[/dim]")
+                        
+                        progress.advance(task)
+                        time.sleep(1)
                 
                 if upload_complete:
                     console.print("[green]✓ Upload complete![/green]")

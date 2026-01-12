@@ -5,7 +5,7 @@ All notable changes to macPerplex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.0] - 2026-01-12
 
 ### Added
 - Automatic Deep Research mode when "research" is spoken in query
@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - test_overlay.py (development artifact no longer needed)
+
+### Performance
+- Upload detection: 5-10 seconds faster with instant WebDriverWait
+- Audio-only mode: 3.5 seconds faster (removed unnecessary delays)
+- Total speedup: ~8-13 seconds per query
 
 ## [1.0.0] - 2026-01-11
 

@@ -928,6 +928,11 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
         else:
             console.print("[yellow]⏭️  No screenshot (audio-only mode)[/yellow]")
 
+        # Step 3: Check if user wants Deep Research mode
+        wants_deep_research = "research" in message_text.lower()
+        if wants_deep_research:
+            console.print("[bold magenta]🔬 'research' detected - will enable Deep Research mode[/bold magenta]")
+
         # Step 4: Find and switch to Perplexity tab
         global PERPLEXITY_WINDOW_HANDLE
         console.print("[bold]🔍 Looking for Perplexity tab...[/bold]")
@@ -1033,7 +1038,39 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
             console.print(f"   [dim]Page title: {driver.title}[/dim]")
             return
 
-        # Step 5: Type the transcribed message FIRST
+        # Step 5: Set search mode (Search vs Research) for this query
+        # It's a segmented control: click "Search" for normal, "Research" for deep research
+        try:
+            # Check which mode is currently active
+            research_button = driver.find_element(By.XPATH, "//button[@aria-label='Research' and @role='radio']")
+            is_research_on = (research_button.get_attribute("data-state") == "checked")
+            
+            console.print(f"[dim]   Mode currently: {'RESEARCH' if is_research_on else 'SEARCH'}[/dim]")
+            console.print(f"[dim]   This query wants: {'RESEARCH' if wants_deep_research else 'SEARCH'}[/dim]")
+            
+            # Click the appropriate button if we need to change modes
+            if wants_deep_research and not is_research_on:
+                # Switch to Research mode
+                console.print("[magenta]   → Clicking Research button...[/magenta]")
+                research_button.click()
+                time.sleep(0.5)
+                console.print("[green]   ✓[/green] Deep Research mode enabled")
+                
+            elif not wants_deep_research and is_research_on:
+                # Switch back to Search mode - click the Search button
+                console.print("[magenta]   → Clicking Search button (normal mode)...[/magenta]")
+                search_button = driver.find_element(By.XPATH, "//button[@aria-label='Search' and @role='radio']")
+                search_button.click()
+                time.sleep(0.5)
+                console.print("[green]   ✓[/green] Normal Search mode enabled")
+            else:
+                console.print(f"[dim]   ✓ Already in correct mode[/dim]")
+                
+        except Exception as e:
+            console.print(f"[yellow]⚠[/yellow] Could not set search mode: {e}")
+            console.print("[dim]   Continuing with current mode...[/dim]")
+
+        # Step 6: Type the transcribed message
         console.print(f"[bold]⌨️  Typing message:[/bold] [cyan]\"{message_text}\"[/cyan]")
         chat_input.click()
         time.sleep(0.5)

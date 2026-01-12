@@ -66,7 +66,7 @@ python3 macPerplex.py
 - Hold the trigger, speak your question, release
 - Sends transcribed audio to Perplexity without screenshot
 
-### Region Selection (New!)
+### Region Selection
 
 When using Screenshot + Audio mode, you can select a specific region:
 
@@ -77,6 +77,20 @@ When using Screenshot + Audio mode, you can select a specific region:
 5. If you don't drag, it captures the window under your cursor
 
 **💡 Tip:** Region selection is great for capturing specific parts of a page (like tables or charts) for better OCR accuracy. Works on all monitors!
+
+### Deep Research Mode
+
+Say the word "**research**" in your query to automatically enable Perplexity's Deep Research mode:
+
+- ✅ "Can you **research** this error message?"
+- ✅ "Please **research** this topic for me"
+- ❌ "Explain this code" (normal search mode)
+
+The app automatically:
+- Detects "research" keyword in your transcription
+- Clicks the Research button in Perplexity's segmented control
+- Switches back to normal Search mode if you don't say "research"
+- Each query sets its own mode independently
 
 ## Configuration
 

@@ -5,6 +5,29 @@ All notable changes to macPerplex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Automatic Deep Research mode when "research" is spoken in query
+  - Detects "research" keyword in transcription
+  - Automatically clicks Research/Search button in segmented control
+  - Sets correct mode for each query independently
+- Installation instructions in README (git clone and pip install options)
+- Professional project structure (pyproject.toml, CHANGELOG.md, CONTRIBUTING.md)
+- Enhanced .gitignore with comprehensive patterns
+
+### Changed
+- Improved window tab switching to minimize disruption of minimized windows
+- Enhanced send button click with JavaScript fallback and scroll-into-view
+- Better error messages for send button failures
+
+### Fixed
+- Send button now clicks reliably with multiple fallback strategies
+- Window switching immediately returns to original tab if not Perplexity
+
+### Removed
+- test_overlay.py (development artifact no longer needed)
+
 ## [1.0.0] - 2026-01-11
 
 ### Added

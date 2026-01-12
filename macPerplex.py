@@ -13,7 +13,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import StaleElementReferenceException
+from selenium.common.exceptions import StaleElementReferenceException, TimeoutException
 import sys
 import time
 import subprocess
@@ -1262,61 +1262,32 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
                             except Exception as e:
                                 print(f"   ⚠ Could not verify file: {e}")
                 
-                # Wait for upload to actually complete with progress spinner
-                upload_complete = False
-                max_wait = 15  # Wait up to 15 seconds for upload
-                
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[bold yellow]Uploading screenshot..."),
-                    TimeElapsedColumn(),
-                    console=console
-                ) as progress:
-                    task = progress.add_task("upload", total=max_wait)
-                    
-                    for i in range(max_wait):
-                        try:
-                            # Look for visual indicators that file was uploaded
-                            # Check for image preview, thumbnail, or remove button
-                            indicators = driver.find_elements(By.XPATH, 
-                                "//img[contains(@src, 'blob:') or contains(@src, 'data:image')] | "
-                                "//div[contains(@class, 'preview')] | "
-                                "//button[contains(@aria-label, 'Remove')] | "
-                                "*[contains(@class, 'file') or contains(@class, 'attachment')]"
-                            )
-                            
-                            # Filter to only visible elements (may throw StaleElementReferenceException)
-                            visible_indicators = []
-                            for ind in indicators:
-                                try:
-                                    if ind.is_displayed():
-                                        visible_indicators.append(ind)
-                                except StaleElementReferenceException:
-                                    # Element removed from DOM during check, skip it
-                                    continue
-                            
-                            if visible_indicators:
-                                upload_complete = True
-                                break
-                            
-                        except StaleElementReferenceException:
-                            # DOM changed while finding elements - this is expected, retry next iteration
-                            pass
-                        
-                        except Exception as e:
-                            # Unexpected error - log it for debugging
-                            console.print(f"[dim]⚠ Upload check error (will retry): {e}[/dim]")
-                        
-                        progress.advance(task)
-                        time.sleep(1)
-                
-                if upload_complete:
+                # Wait for upload to complete by watching for remove button
+                console.print("[bold yellow]📤 Waiting for upload to complete...[/bold yellow]")
+                try:
+                    # Wait for the remove button to appear (indicates upload complete)
+                    # This returns immediately when found, no arbitrary delays!
+                    remove_button = wait.until(
+                        EC.presence_of_element_located((By.XPATH, "//button[@data-testid='remove-uploaded-file']"))
+                    )
                     console.print("[green]✓ Upload complete![/green]")
-                    time.sleep(1)
-                else:
-                    console.print(f"[yellow]⚠ No visual confirmation after {max_wait}s[/yellow]")
-                    console.print("[dim]   Giving extra time for upload to complete...[/dim]")
-                    time.sleep(5)
+                    
+                except TimeoutException:
+                    # Fallback: try the old broad selector as backup
+                    console.print("[dim]   Remove button not found, trying fallback detection...[/dim]")
+                    try:
+                        # Look for any upload indicator as backup
+                        wait.until(
+                            EC.presence_of_element_located((By.XPATH, 
+                                "//img[contains(@src, 'blob:')] | "
+                                "//div[contains(@class, 'preview')] | "
+                                "//button[contains(@aria-label, 'Remove')]"
+                            ))
+                        )
+                        console.print("[green]✓ Upload detected (fallback method)![/green]")
+                    except TimeoutException:
+                        console.print(f"[yellow]⚠ No upload indicator after 20s[/yellow]")
+                        console.print("[dim]   Upload may have failed. Continuing anyway...[/dim]")
         
         # Wait a moment for any UI updates
         time.sleep(1)

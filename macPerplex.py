@@ -78,8 +78,8 @@ def play_double_beep():
         play_beep(800, 0.08, 0.25)  # First beep
         time.sleep(0.05)
         play_beep(1000, 0.08, 0.25)  # Second beep (higher)
-    except:
-        pass
+    except Exception:
+        pass  # Don't let audio failures break the app
 
 def play_start_beep():
     """Play single beep for audio-only mode start."""
@@ -189,7 +189,7 @@ class RegionSelector:
                 self._process.terminate()
                 try:
                     self._process.wait(timeout=0.5)
-                except:
+                except subprocess.TimeoutExpired:
                     self._process.kill()
         
         # Read result from file
@@ -207,8 +207,8 @@ class RegionSelector:
                             self.selection_complete = True
                             print(f"   ✓ Region: {w}x{h} at ({x}, {y})")
                     os.unlink(self._result_file)
-            except:
-                pass
+            except (OSError, ValueError):
+                pass  # File I/O or parsing errors
         
         # Stop pynput listener if it was used
         if hasattr(self, '_mouse_listener'):
@@ -391,8 +391,8 @@ class AudioRecorder:
                 
                 try:
                     self.live_display.update(Panel(display_text, border_style="red", width=60))
-                except:
-                    pass
+                except Exception:
+                    pass  # Live display update failures shouldn't crash recording
         
         try:
             # Start live display
@@ -648,7 +648,7 @@ def sharpen_image_and_save(input_path, output_path):
             import shutil
             shutil.copy(input_path, output_path)
             return True
-        except:
+        except (OSError, IOError):
             return False
 
 
@@ -884,10 +884,10 @@ def capture_screenshot_func(target_window_id=None, target_app_name=None, window_
                         total_pixels = w * h
                         megapixels = total_pixels / 1_000_000
                         print(f"  Resolution: {megapixels:.2f} megapixels")
-                    except:
-                        pass
-        except:
-            pass
+                    except (ValueError, TypeError):
+                        pass  # Parsing errors
+        except (subprocess.SubprocessError, OSError):
+            pass  # sips command failures
         
         # Convert to MB for display
         size_mb = file_size / (1024 * 1024)
@@ -954,10 +954,10 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
                         'tell application "Google Chrome" to activate'
                     ], check=False, capture_output=True, timeout=2)
                     time.sleep(0.3)
-                except:
-                    pass
-        except:
-            pass
+                except (subprocess.SubprocessError, subprocess.TimeoutExpired):
+                    pass  # Chrome activation not critical
+        except Exception:
+            pass  # URL check failed
         
         # If not, check cached handle first
         if not perplexity_handle and PERPLEXITY_WINDOW_HANDLE:
@@ -974,9 +974,9 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
                             'tell application "Google Chrome" to activate'
                         ], check=False, capture_output=True, timeout=2)
                         time.sleep(0.3)
-                    except:
-                        pass
-            except:
+                    except (subprocess.SubprocessError, subprocess.TimeoutExpired):
+                        pass  # Chrome activation not critical
+            except Exception:
                 # Handle no longer valid, clear cache
                 PERPLEXITY_WINDOW_HANDLE = None
                 driver.switch_to.window(current_handle)
@@ -997,11 +997,12 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
                     else:
                         # Switch back immediately if not the right window
                         driver.switch_to.window(original_handle)
-                except:
+                except Exception:
+                    # Switching failed, try to recover
                     try:
                         driver.switch_to.window(original_handle)
-                    except:
-                        pass
+                    except Exception:
+                        pass  # Can't recover, continue to next window
                     continue
         
         if not perplexity_handle:
@@ -1010,8 +1011,8 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
             console.print("   [dim]💡 Tip: Keep the Perplexity tab visible/active to avoid searching[/dim]")
             try:
                 driver.switch_to.window(current_handle)
-            except:
-                pass
+            except Exception:
+                pass  # Can't switch back, continue anyway
             return
         
         # Bring Chrome window to front at macOS level
@@ -1330,8 +1331,8 @@ def check_key_match(key, trigger_key_str):
         # Fallback for character keys
         if hasattr(key, 'char'):
             return key.char == trigger_key_str
-    except:
-        pass
+    except (AttributeError, TypeError):
+        pass  # Key object doesn't have expected attributes
     return False
 
 def on_press(key, recorder):

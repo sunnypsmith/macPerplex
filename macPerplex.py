@@ -125,15 +125,16 @@ class RegionSelector:
         self.is_selecting = False
         self.selection_complete = False
         
-        # Create temp file for result
-        self._result_file = tempfile.mktemp(suffix='.txt', prefix='region_')
+        # Create temp file for result (using mkstemp for security)
+        fd, self._result_file = tempfile.mkstemp(suffix='.txt', prefix='region_')
+        os.close(fd)  # Close file descriptor, overlay will write to it
         
         # Find overlay_process.py (same directory as this script)
         script_dir = Path(__file__).parent
         overlay_script = script_dir / "overlay_process.py"
         
         if not overlay_script.exists():
-            print(f"   ⚠ Overlay script not found: {overlay_script}")
+            console.print(f"   [yellow]⚠[/yellow] Overlay script not found: {overlay_script}")
             self._start_pynput_fallback()
             return
         
@@ -145,11 +146,11 @@ class RegionSelector:
             self._process = subprocess.Popen(
                 [python_exe, str(overlay_script), self._result_file]
             )
-            print("   📐 REGION SELECT: Drag to select, ESC to cancel")
-            print("   📐 (Or just release pedal for window under cursor)")
+            console.print("   [cyan]📐 REGION SELECT:[/cyan] [dim]Drag to select, ESC to cancel[/dim]")
+            console.print("   [dim]📐 (Or just release pedal for window under cursor)[/dim]")
             
         except Exception as e:
-            print(f"   ⚠ Could not start overlay: {e}")
+            console.print(f"   [yellow]⚠[/yellow] Could not start overlay: {e}")
             self._start_pynput_fallback()
     
     def _start_pynput_fallback(self):
@@ -164,7 +165,7 @@ class RegionSelector:
                 self.start_point = (x, y)
                 self.end_point = (x, y)
                 self.is_selecting = True
-                print(f"   ✓ Selection started at ({x}, {y})")
+                console.print(f"   [green]✓[/green] Selection started at ({x}, {y})")
             else:
                 if self.is_selecting:
                     self.end_point = (x, y)
@@ -172,7 +173,7 @@ class RegionSelector:
                     self.selection_complete = True
                     region = self.get_region()
                     if region:
-                        print(f"   ✓ Region selected: {region[2]}x{region[3]} pixels")
+                        console.print(f"   [green]✓[/green] Region selected: {region[2]}x{region[3]} pixels")
         
         def on_move(x, y):
             if self.is_selecting:
@@ -180,7 +181,7 @@ class RegionSelector:
         
         self._mouse_listener = mouse.Listener(on_click=on_click, on_move=on_move)
         self._mouse_listener.start()
-        print("   📐 (No visual overlay - using mouse tracking)")
+        console.print("   [dim]📐 (No visual overlay - using mouse tracking)[/dim]")
     
     def _cleanup_process(self):
         """Internal method to clean up subprocess."""
@@ -221,7 +222,7 @@ class RegionSelector:
                             self.start_point = (x, y)
                             self.end_point = (x + w, y + h)
                             self.selection_complete = True
-                            print(f"   ✓ Region: {w}x{h} at ({x}, {y})")
+                            console.print(f"   [green]✓[/green] Region: {w}x{h} at ({x}, {y})")
                     os.unlink(self._result_file)
             except (OSError, ValueError):
                 pass  # File I/O or parsing errors
@@ -369,6 +370,12 @@ class AudioRecorder:
         self.start_time = time.time()
         
         def audio_callback(indata, frames, time_info, status):
+            # Check if max recording duration exceeded
+            if self.start_time and (time.time() - self.start_time) > MAX_RECORDING_DURATION:
+                # Stop recording automatically
+                console.print(f"\n[yellow]⚠ Max recording duration ({MAX_RECORDING_DURATION}s) reached, stopping...[/yellow]")
+                raise sd.CallbackAbort()
+            
             # Calculate RMS (volume level)
             rms = np.sqrt(np.mean(indata**2))
             
@@ -596,15 +603,15 @@ def get_window_under_mouse():
                 if owner_name in SKIP_APPS:
                     continue
                     
-                print(f"   ✓ SELECTED: {owner_name} (window {window_id})")
+                console.print(f"   [green]✓[/green] SELECTED: {owner_name} (window {window_id})")
                 return window_id, owner_name, (x, y, width, height)
         
-        print("   ⚠ No window found under mouse cursor")
+        console.print("   [yellow]⚠[/yellow] No window found under mouse cursor")
         return None, None, None
         
     except Exception as e:
         import traceback
-        print(f"   ⚠ Error getting window under mouse: {e}")
+        console.print(f"   [yellow]⚠[/yellow] Error getting window under mouse: {e}")
         traceback.print_exc()
         return None, None, None
 
@@ -623,7 +630,7 @@ def get_frontmost_window_id():
         return window_id, app_name, bounds
     
     # Fallback: scan all windows front-to-back
-    print("   Falling back to front-to-back scan...")
+    console.print("   [dim]Falling back to front-to-back scan...[/dim]")
     try:
         from Quartz import (
             CGWindowListCopyWindowInfo,
@@ -653,14 +660,14 @@ def get_frontmost_window_id():
             if owner_name in SKIP_APPS:
                 continue
             
-            print(f"   Found: {owner_name} (window {window_id})")
+            console.print(f"   [dim]Found: {owner_name} (window {window_id})[/dim]")
             return window_id, owner_name, (x, y, width, height)
         
-        print("   ⚠ No suitable window found")
+        console.print("   [yellow]⚠[/yellow] No suitable window found")
         return None, None, None
         
     except Exception as e:
-        print(f"   ⚠ Error: {e}")
+        console.print(f"   [yellow]⚠[/yellow] Error: {e}")
         return None, None, None
 
 
@@ -681,10 +688,10 @@ def sharpen_image_and_save(input_path, output_path):
         
         # Save as lossless PNG
         img.save(output_path, 'PNG', optimize=True)
-        print(f"   ✓ Sharpened and saved as lossless PNG")
+        console.print(f"   [green]✓[/green] Sharpened and saved as lossless PNG")
         return True
     except Exception as e:
-        print(f"   ⚠ Sharpening failed: {e}")
+        console.print(f"   [yellow]⚠[/yellow] Sharpening failed: {e}")
         # Fallback: just copy the file
         try:
             import shutil
@@ -830,7 +837,7 @@ def capture_screenshot_func(target_window_id=None, target_app_name=None, window_
             print(f"   Trying Quartz/CGWindowListCreateImage...")
             if capture_window_with_quartz(target_window_id, screenshot_path):
                 if screenshot_path.exists() and screenshot_path.stat().st_size > 1000:
-                    print(f"✓ Captured window via Quartz: {target_app_name or 'unknown'}")
+                    console.print(f"[green]✓ Captured window via Quartz:[/green] {target_app_name or 'unknown'}")
                     window_captured = True
             
             # Second try: screencapture -l (window ID)
@@ -846,7 +853,7 @@ def capture_screenshot_func(target_window_id=None, target_app_name=None, window_
                 if result.returncode == 0 and temp_png.exists() and temp_png.stat().st_size > 1000:
                     # Convert to sharpened JPEG
                     if sharpen_image_and_save(temp_png, screenshot_path):
-                        print(f"✓ Captured window: {target_app_name or 'unknown'}")
+                        console.print(f"[green]✓ Captured window:[/green] {target_app_name or 'unknown'}")
                         window_captured = True
                     temp_png.unlink(missing_ok=True)
                 else:
@@ -868,7 +875,7 @@ def capture_screenshot_func(target_window_id=None, target_app_name=None, window_
                 
                 if result.returncode == 0 and temp_png.exists() and temp_png.stat().st_size > 1000:
                     if sharpen_image_and_save(temp_png, screenshot_path):
-                        print(f"✓ Captured: {app_name}")
+                        console.print(f"[green]✓ Captured:[/green] {app_name}")
                         window_captured = True
                     temp_png.unlink(missing_ok=True)
         
@@ -890,12 +897,12 @@ def capture_screenshot_func(target_window_id=None, target_app_name=None, window_
         
         # Verify file exists and has content
         if not screenshot_path.exists():
-            print("✗ Screenshot file was not created")
+            console.print("[red]✗ Screenshot file was not created[/red]")
             return None
         
         file_size = screenshot_path.stat().st_size
         if file_size < 1000:  # Less than 1KB is definitely wrong
-            print(f"✗ Screenshot file too small: {file_size} bytes")
+            console.print(f"[red]✗ Screenshot file too small:[/red] {file_size} bytes")
             screenshot_path.unlink()
             return None
         
@@ -933,16 +940,16 @@ def capture_screenshot_func(target_window_id=None, target_app_name=None, window_
         
         # Convert to MB for display
         size_mb = file_size / (1024 * 1024)
-        print(f"✓ Captured screenshot: {screenshot_path}")
-        print(f"  File size: {size_mb:.2f} MB ({file_size:,} bytes)")
+        console.print(f"[green]✓ Captured screenshot:[/green] [dim]{screenshot_path}[/dim]")
+        console.print(f"[dim]  File size: {size_mb:.2f} MB ({file_size:,} bytes)[/dim]")
         
         return str(screenshot_path)
             
     except subprocess.TimeoutExpired:
-        print("✗ Screenshot capture timed out")
+        console.print("[red]✗ Screenshot capture timed out[/red]")
         return None
     except Exception as e:
-        print(f"✗ Screenshot capture failed: {e}")
+        console.print(f"[red]✗ Screenshot capture failed:[/red] {e}")
         return None
 
 # ============ MAIN PROCESSING FUNCTION ============
@@ -1121,7 +1128,7 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
 
         # Step 6: Upload screenshot AFTER typing message
         if screenshot_path:
-            print(f"📤 Preparing to upload file: {screenshot_path}")
+            console.print(f"[bold]📤 Preparing to upload file:[/bold] [dim]{screenshot_path}[/dim]")
             
             # Debug: Show current browser window info
             try:
@@ -1159,7 +1166,7 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
             # Verify file exists and is readable before uploading
             file_path = Path(screenshot_path)
             if not file_path.exists():
-                print("✗ File doesn't exist, skipping upload")
+                console.print("[red]✗ File doesn't exist, skipping upload[/red]")
             else:
                 file_size = file_path.stat().st_size
                 print(f"   File size: {file_size:,} bytes ({file_size / (1024*1024):.2f} MB)")
@@ -1169,7 +1176,7 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
                 
                 # Double-check it's a file, not a directory
                 if not file_path.is_file():
-                    print(f"✗ ERROR: Path is not a file: {abs_path}")
+                    console.print(f"[red]✗ ERROR: Path is not a file:[/red] {abs_path}")
                 else:
                     print(f"   Attempting file upload: {abs_path}")
                     
@@ -1428,8 +1435,6 @@ def on_release(key, recorder, driver, wait):
         # Check if either trigger key was released
         if check_key_match(key, TRIGGER_KEY_WITH_SCREENSHOT) or check_key_match(key, TRIGGER_KEY_AUDIO_ONLY):
             if recorder.is_recording:
-                # Ensure region selector is cleaned up even if exception occurs
-                region_selector_to_cleanup = REGION_SELECTOR
                 play_stop_beep()  # Audio feedback
                 screenshot_path = None
                 
@@ -1444,28 +1449,28 @@ def on_release(key, recorder, driver, wait):
                             
                             if region:
                                 # User selected a region - capture it
-                                print(f"📸 Capturing selected region...")
+                                console.print("[cyan]📸 Capturing selected region...[/cyan]")
                                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                                 screenshot_path = Path(f"/tmp/perplexity_screenshot_{timestamp}.png")
                                 
                                 if capture_region_screenshot(region, screenshot_path):
-                                    print(f"✓ Region screenshot captured!")
+                                    console.print("[green]✓ Region screenshot captured![/green]")
                                 else:
-                                    print("⚠ Region capture failed, trying window fallback...")
+                                    console.print("[yellow]⚠ Region capture failed, trying window fallback...[/yellow]")
                                     screenshot_path = None
                             
                             # No region selected or region capture failed - use window fallback
                             if not screenshot_path:
-                                print(f"📸 Capturing window: {getattr(recorder, 'fallback_app_name', 'unknown')}...")
+                                console.print(f"[cyan]📸 Capturing window:[/cyan] {getattr(recorder, 'fallback_app_name', 'unknown')}...")
                                 screenshot_path = capture_screenshot_func(
                                     getattr(recorder, 'fallback_window_id', None),
                                     getattr(recorder, 'fallback_app_name', None),
                                     getattr(recorder, 'fallback_bounds', None)
                                 )
                                 if screenshot_path:
-                                    print("✓ Window screenshot captured!")
+                                    console.print("[green]✓ Window screenshot captured![/green]")
                                 else:
-                                    print("⚠ Screenshot capture failed")
+                                    console.print("[yellow]⚠ Screenshot capture failed[/yellow]")
                     
                     # Stop audio recording
                     audio_path = recorder.stop_recording()
@@ -1490,6 +1495,38 @@ def on_release(key, recorder, driver, wait):
             REGION_SELECTOR = None
 
 
+# ============ STARTUP CLEANUP ============
+def cleanup_orphaned_temp_files():
+    """Clean up any orphaned temp files from previous runs/crashes."""
+    import glob
+    import os
+    
+    try:
+        # Find all macPerplex temp files
+        patterns = [
+            "/tmp/perplexity_screenshot_*.png",
+            "/tmp/perplexity_audio_*.wav",
+            "/tmp/perplexity_temp*.png",
+            "/tmp/region_*.txt"
+        ]
+        
+        cleaned = 0
+        for pattern in patterns:
+            for filepath in glob.glob(pattern):
+                try:
+                    # Delete files older than 1 hour
+                    if time.time() - os.path.getmtime(filepath) > 3600:
+                        os.unlink(filepath)
+                        cleaned += 1
+                except Exception:
+                    pass  # File might be in use or already deleted
+        
+        if cleaned > 0:
+            console.print(f"[dim]🗑️  Cleaned up {cleaned} orphaned temp file(s)[/dim]")
+    except Exception:
+        pass  # Cleanup failures shouldn't prevent app from starting
+
+
 # ============ CONNECT TO CHROME ============
 # FIRST: Open Chrome with: /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir="/tmp/chrome_dev_profile"
 # Then navigate to perplexity.ai and log in
@@ -1497,6 +1534,9 @@ console.print(Panel.fit(
     "[bold cyan]🚀 macPerplex[/bold cyan]\n[dim]Voice AI for Perplexity[/dim]",
     border_style="cyan"
 ))
+
+# Clean up any orphaned files from previous crashes
+cleanup_orphaned_temp_files()
 
 # Check if OpenAI API key is set
 if not OPENAI_API_KEY or OPENAI_API_KEY.startswith("your-"):

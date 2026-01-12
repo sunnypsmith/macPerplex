@@ -1178,45 +1178,76 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
                             try:
                                 driver.execute_script("arguments[0].value = '';", inp)
                                 print(f"   - Cleared input {idx}")
-                            except Exception as e:
+                            except (StaleElementReferenceException, Exception) as e:
                                 print(f"   - Could not clear input {idx}: {e}")
                         
                         time.sleep(0.5)  # Brief pause after clearing
                         
-                        # Use the first file input
-                        file_input = file_inputs[0]
-                        
-                        # Check if it accepts multiple files
-                        multiple_attr = file_input.get_attribute('multiple')
-                        accept_attr = file_input.get_attribute('accept')
-                        print(f"   Input attributes: multiple={multiple_attr}, accept={accept_attr}")
-                        
-                        # Send ONLY this one file path to the first input
-                        print(f"   Sending file path to input...")
-                        file_input.send_keys(abs_path)
-                        print("   ✓ File path sent to input!")
-                        
-                        # Verify the file was actually added
-                        time.sleep(1)
-                        try:
-                            files_added = driver.execute_script("return arguments[0].files.length", file_input)
-                            print(f"   Browser reports {files_added} file(s) in input")
-                            if files_added == 0:
-                                print("   ⚠ WARNING: No files in input! Upload may have failed.")
-                            else:
-                                # Get file info from browser
-                                file_info = driver.execute_script("""
-                                    const file = arguments[0].files[0];
-                                    return file ? {
-                                        name: file.name,
-                                        size: file.size,
-                                        type: file.type
-                                    } : null;
-                                """, file_input)
-                                if file_info:
-                                    print(f"   ✓ File in browser: {file_info['name']} ({file_info['size']} bytes)")
-                        except Exception as e:
-                            print(f"   ⚠ Could not verify file: {e}")
+                        # Re-query file inputs after clearing (prevents stale element if page re-rendered)
+                        file_inputs = driver.find_elements(By.XPATH, "//input[@type='file']")
+                        if not file_inputs:
+                            print("   ✗ ERROR: File inputs disappeared after clearing!")
+                            print("   Skipping upload...")
+                        else:
+                            print(f"   Re-queried: found {len(file_inputs)} file input(s)")
+                            
+                            # Use the first file input (freshly queried)
+                            file_input = file_inputs[0]
+                            
+                            # Check if it accepts multiple files
+                            try:
+                                multiple_attr = file_input.get_attribute('multiple')
+                                accept_attr = file_input.get_attribute('accept')
+                                print(f"   Input attributes: multiple={multiple_attr}, accept={accept_attr}")
+                            except StaleElementReferenceException:
+                                print("   ⚠ File input went stale, re-querying one more time...")
+                                file_inputs = driver.find_elements(By.XPATH, "//input[@type='file']")
+                                if not file_inputs:
+                                    print("   ✗ ERROR: Cannot find file inputs!")
+                                    raise
+                                file_input = file_inputs[0]
+                                multiple_attr = file_input.get_attribute('multiple')
+                                accept_attr = file_input.get_attribute('accept')
+                                print(f"   Input attributes: multiple={multiple_attr}, accept={accept_attr}")
+                            
+                            # Send ONLY this one file path to the first input
+                            print(f"   Sending file path to input...")
+                            try:
+                                file_input.send_keys(abs_path)
+                                print("   ✓ File path sent to input!")
+                            except StaleElementReferenceException:
+                                print("   ⚠ File input went stale during send, re-querying and retrying...")
+                                file_inputs = driver.find_elements(By.XPATH, "//input[@type='file']")
+                                if file_inputs:
+                                    file_input = file_inputs[0]
+                                    file_input.send_keys(abs_path)
+                                    print("   ✓ File path sent to input (after retry)!")
+                                else:
+                                    raise Exception("File inputs disappeared")
+                            
+                            # Verify the file was actually added
+                            time.sleep(1)
+                            try:
+                                files_added = driver.execute_script("return arguments[0].files.length", file_input)
+                                print(f"   Browser reports {files_added} file(s) in input")
+                                if files_added == 0:
+                                    print("   ⚠ WARNING: No files in input! Upload may have failed.")
+                                else:
+                                    # Get file info from browser
+                                    file_info = driver.execute_script("""
+                                        const file = arguments[0].files[0];
+                                        return file ? {
+                                            name: file.name,
+                                            size: file.size,
+                                            type: file.type
+                                        } : null;
+                                    """, file_input)
+                                    if file_info:
+                                        print(f"   ✓ File in browser: {file_info['name']} ({file_info['size']} bytes)")
+                            except StaleElementReferenceException as e:
+                                print(f"   ⚠ Could not verify file (element stale): {e}")
+                            except Exception as e:
+                                print(f"   ⚠ Could not verify file: {e}")
                 
                 # Wait for upload to actually complete with progress spinner
                 upload_complete = False

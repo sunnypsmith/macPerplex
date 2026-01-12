@@ -109,6 +109,10 @@ class RegionSelector:
         self.selection_complete = False
         self._process = None
         self._result_file = None
+    
+    def __del__(self):
+        """Cleanup subprocess if RegionSelector is garbage collected."""
+        self._cleanup_process()
         
     def start(self):
         """Start the overlay via subprocess."""
@@ -177,20 +181,31 @@ class RegionSelector:
         self._mouse_listener.start()
         print("   📐 (No visual overlay - using mouse tracking)")
     
+    def _cleanup_process(self):
+        """Internal method to clean up subprocess."""
+        if self._process:
+            try:
+                # Check if process is still running
+                if self._process.poll() is None:
+                    # Process still running, try graceful termination
+                    self._process.terminate()
+                    try:
+                        self._process.wait(timeout=0.5)
+                    except subprocess.TimeoutExpired:
+                        # Force kill if terminate didn't work
+                        self._process.kill()
+                        self._process.wait()  # Reap zombie
+            except Exception:
+                pass  # Process already dead or other error
+            finally:
+                self._process = None
+    
     def stop(self):
         """Stop the overlay and read result."""
         import os
         
-        # Wait for subprocess to finish (with timeout)
-        if self._process:
-            try:
-                self._process.wait(timeout=0.5)
-            except subprocess.TimeoutExpired:
-                self._process.terminate()
-                try:
-                    self._process.wait(timeout=0.5)
-                except subprocess.TimeoutExpired:
-                    self._process.kill()
+        # Clean up subprocess
+        self._cleanup_process()
         
         # Read result from file
         if self._result_file:
@@ -1397,47 +1412,59 @@ def on_release(key, recorder, driver, wait):
         # Check if either trigger key was released
         if check_key_match(key, TRIGGER_KEY_WITH_SCREENSHOT) or check_key_match(key, TRIGGER_KEY_AUDIO_ONLY):
             if recorder.is_recording:
+                # Ensure region selector is cleaned up even if exception occurs
+                region_selector_to_cleanup = REGION_SELECTOR
                 play_stop_beep()  # Audio feedback
                 screenshot_path = None
                 
                 # Handle screenshot capture (only for screenshot mode)
-                if recorder.capture_screenshot:
-                    # Stop the region selector
-                    if REGION_SELECTOR:
-                        REGION_SELECTOR.stop()
-                        region = REGION_SELECTOR.get_region()
-                        REGION_SELECTOR = None
-                        
-                        if region:
-                            # User selected a region - capture it
-                            print(f"📸 Capturing selected region...")
-                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                            screenshot_path = Path(f"/tmp/perplexity_screenshot_{timestamp}.png")
+                try:
+                    if recorder.capture_screenshot:
+                        # Stop the region selector
+                        if REGION_SELECTOR:
+                            REGION_SELECTOR.stop()
+                            region = REGION_SELECTOR.get_region()
+                            REGION_SELECTOR = None
                             
-                            if capture_region_screenshot(region, screenshot_path):
-                                print(f"✓ Region screenshot captured!")
-                            else:
-                                print("⚠ Region capture failed, trying window fallback...")
-                                screenshot_path = None
+                            if region:
+                                # User selected a region - capture it
+                                print(f"📸 Capturing selected region...")
+                                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                screenshot_path = Path(f"/tmp/perplexity_screenshot_{timestamp}.png")
+                                
+                                if capture_region_screenshot(region, screenshot_path):
+                                    print(f"✓ Region screenshot captured!")
+                                else:
+                                    print("⚠ Region capture failed, trying window fallback...")
+                                    screenshot_path = None
+                            
+                            # No region selected or region capture failed - use window fallback
+                            if not screenshot_path:
+                                print(f"📸 Capturing window: {getattr(recorder, 'fallback_app_name', 'unknown')}...")
+                                screenshot_path = capture_screenshot_func(
+                                    getattr(recorder, 'fallback_window_id', None),
+                                    getattr(recorder, 'fallback_app_name', None),
+                                    getattr(recorder, 'fallback_bounds', None)
+                                )
+                                if screenshot_path:
+                                    print("✓ Window screenshot captured!")
+                                else:
+                                    print("⚠ Screenshot capture failed")
+                    
+                    # Stop audio recording
+                    audio_path = recorder.stop_recording()
+                    
+                    if audio_path:
+                        send_to_perplexity(driver, wait, audio_path, screenshot_path)
                         
-                        # No region selected or region capture failed - use window fallback
-                        if not screenshot_path:
-                            print(f"📸 Capturing window: {getattr(recorder, 'fallback_app_name', 'unknown')}...")
-                            screenshot_path = capture_screenshot_func(
-                                getattr(recorder, 'fallback_window_id', None),
-                                getattr(recorder, 'fallback_app_name', None),
-                                getattr(recorder, 'fallback_bounds', None)
-                            )
-                            if screenshot_path:
-                                print("✓ Window screenshot captured!")
-                            else:
-                                print("⚠ Screenshot capture failed")
-                
-                # Stop audio recording
-                audio_path = recorder.stop_recording()
-                
-                if audio_path:
-                    send_to_perplexity(driver, wait, audio_path, screenshot_path)
+                finally:
+                    # Ensure region selector is cleaned up even if exception occurred
+                    if REGION_SELECTOR:
+                        try:
+                            REGION_SELECTOR.stop()
+                        except Exception:
+                            pass
+                        REGION_SELECTOR = None
                     
     except Exception as e:
         print(f"Error in key release handler: {e}")

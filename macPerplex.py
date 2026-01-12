@@ -1116,12 +1116,8 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
         # Step 6: Type the transcribed message
         console.print(f"[bold]⌨️  Typing message:[/bold] [cyan]\"{message_text}\"[/cyan]")
         chat_input.click()
-        time.sleep(0.5)
         chat_input.send_keys(message_text)
         console.print("[green]✓[/green] Message typed!")
-        
-        # Wait for any UI updates after typing
-        time.sleep(1)
 
         # Step 6: Upload screenshot AFTER typing message
         if screenshot_path:
@@ -1288,15 +1284,8 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
                     except TimeoutException:
                         console.print(f"[yellow]⚠ No upload indicator after 20s[/yellow]")
                         console.print("[dim]   Upload may have failed. Continuing anyway...[/dim]")
-        
-        # Wait a moment for any UI updates
-        time.sleep(1)
 
-        # Step 7: Verify we have content to send
-        console.print("[green]✓[/green] Ready to send")
-        time.sleep(1)
-
-        # Step 8: Click send
+        # Step 7: Click send (no delays needed for audio-only)
         console.print("[bold]🔍 Looking for send button...[/bold]")
         try:
             send_button = wait.until(
@@ -1306,7 +1295,6 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
             
             # Scroll button into view first
             driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", send_button)
-            time.sleep(0.3)
             
             # Try normal click first
             try:

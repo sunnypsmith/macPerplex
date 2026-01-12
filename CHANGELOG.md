@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Detects "research" keyword in transcription
   - Automatically clicks Research/Search button in segmented control
   - Sets correct mode for each query independently
+- Audio normalization for consistent Whisper transcription quality
+  - Normalizes to 90% peak volume
+  - Caps boost at 10x to prevent noise amplification
+  - Skips normalization if audio too quiet (< 0.05 peak)
+  - Shows boost factor in logs
 - Installation instructions in README (git clone and pip install options)
 - Professional project structure (pyproject.toml, CHANGELOG.md, CONTRIBUTING.md)
 - Enhanced .gitignore with comprehensive patterns
@@ -20,10 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved window tab switching to minimize disruption of minimized windows
 - Enhanced send button click with JavaScript fallback and scroll-into-view
 - Better error messages for send button failures
+- Replaced all bare except clauses with specific exception types
+- More defensive exception handling throughout
 
 ### Fixed
 - Send button now clicks reliably with multiple fallback strategies
 - Window switching immediately returns to original tab if not Perplexity
+- Audio stream resource leak on recording start failure
+- Subprocess zombie process leak if RegionSelector crashes
+- Stale element handling in upload verification loop
+- File input race condition with re-querying after clearing
+- Proper cleanup of overlay subprocess with __del__ destructor
 
 ### Removed
 - test_overlay.py (development artifact no longer needed)

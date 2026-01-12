@@ -470,6 +470,19 @@ class AudioRecorder:
             # Combine all chunks
             audio_data = np.concatenate(self.audio_chunks, axis=0)
             
+            # Normalize audio for better Whisper transcription
+            peak = np.max(np.abs(audio_data))
+            if peak > 0:
+                # Target 90% of max volume, but don't boost if too quiet (likely noise/silence)
+                if peak > 0.05:
+                    scaling_factor = 0.9 / peak
+                    # Cap boost at 10x to prevent noise amplification
+                    scaling_factor = min(scaling_factor, 10.0)
+                    audio_data = audio_data * scaling_factor
+                    console.print(f"[dim]   🔊 Normalized audio (boost: {scaling_factor:.1f}x, peak: {peak:.2f})[/dim]")
+                else:
+                    console.print(f"[dim]   🔇 Audio too quiet to normalize (peak: {peak:.2f})[/dim]")
+            
             # Save to WAV file
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             audio_path = Path(f"/tmp/perplexity_audio_{timestamp}.wav")

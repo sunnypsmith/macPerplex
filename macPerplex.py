@@ -28,7 +28,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 from rich.live import Live
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeElapsedColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 # Rich console for beautiful output
 console = Console()
@@ -410,9 +410,22 @@ class AudioRecorder:
         except Exception as e:
             console.print(f"\n[bold red]❌ Error starting recording:[/bold red] {e}")
             self.is_recording = False
+            
+            # Clean up live display
             if self.live_display:
-                self.live_display.stop()
+                try:
+                    self.live_display.stop()
+                except Exception:
+                    pass
                 self.live_display = None
+            
+            # Clean up stream if it was created but failed to start
+            if self.stream:
+                try:
+                    self.stream.close()
+                except Exception:
+                    pass
+                self.stream = None
     
     def stop_recording(self):
         """Stop recording and save audio file."""

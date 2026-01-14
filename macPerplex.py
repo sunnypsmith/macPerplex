@@ -755,16 +755,10 @@ def send_to_perplexity(driver, wait, result, screenshot_path=None):
         else:
             console.print("[yellow]⏭️  No screenshot (audio-only mode)[/yellow]")
 
-        # Step 2: Check if user wants Deep Research mode (check original transcript, not emotion context)
+        # Step 3: Check if user wants Deep Research mode (check original transcript, not emotion context)
         wants_deep_research = "research" in message_text.lower()
         if wants_deep_research:
             console.print("[bold magenta]🔬 'research' detected - will enable Deep Research mode[/bold magenta]")
-        
-        # Step 3: Check if we have a screenshot (captured earlier)
-        if screenshot_path:
-            console.print(f"[cyan]📸 Using pre-captured screenshot:[/cyan] [dim]{screenshot_path}[/dim]")
-        else:
-            console.print("[yellow]⏭️  No screenshot (audio-only mode)[/yellow]")
 
         # Step 4: Find and switch to Perplexity tab
         global PERPLEXITY_WINDOW_HANDLE

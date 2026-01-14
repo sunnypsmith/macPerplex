@@ -370,8 +370,9 @@ async def analyze_emotion_async(audio_path):
                                     if len(top_emotions) >= EMOTION_TOP_N:
                                         break
                                     if emotion['score'] >= EMOTION_MIN_SCORE:
-                                        emotion_name = emotion['name']
-                                        emotion_score = emotion['score']
+                                        # Lowercase and use underscores for JSON keys
+                                        emotion_name = emotion['name'].lower().replace(' ', '_')
+                                        emotion_score = round(emotion['score'], 2)
                                         top_emotions.append(emotion_name)
                                         scores[emotion_name] = emotion_score
                                 

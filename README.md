@@ -105,7 +105,10 @@ macPerplex can analyze your voice tone and add emotional context to queries usin
 **Example:**
 ```
 You say (frustrated tone): "What is this error message?"
-Perplexity receives: "[User emotion: Frustrated, Confused, Focused] What is this error message?"
+
+Perplexity receives:
+[voice_affect: {"frustrated":0.82,"confused":0.61,"focused":0.45,"source":"hume_prosody"}]
+What is this error message?
 ```
 
 **Configuration:**

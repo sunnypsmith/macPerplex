@@ -7,9 +7,12 @@ Handles:
 - Speech-to-text transcription (OpenAI Whisper)
 - Emotion analysis (Hume.ai)
 - Audio feedback beeps
+
+Uses asyncio for parallel API calls to minimize latency.
 """
 
 import time
+import asyncio
 import numpy as np
 import sounddevice as sd
 import wave
@@ -260,18 +263,14 @@ class AudioRecorder:
 
 # ============ SPEECH-TO-TEXT ============
 
-def transcribe_audio(audio_path):
-    """Transcribe audio using OpenAI Whisper API."""
+async def transcribe_audio_async(audio_path):
+    """Transcribe audio using OpenAI Whisper API (async)."""
     try:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold cyan]Transcribing audio..."),
-            console=console
-        ) as progress:
-            task = progress.add_task("transcribe", total=None)
-            
+        # Run in thread pool since OpenAI client is synchronous
+        loop = asyncio.get_event_loop()
+        
+        def _transcribe():
             client = OpenAI(api_key=OPENAI_API_KEY)
-            
             with open(audio_path, "rb") as audio_file:
                 transcript = client.audio.transcriptions.create(
                     model=OPENAI_STT_MODEL,
@@ -279,20 +278,26 @@ def transcribe_audio(audio_path):
                     language=TRANSCRIPTION_LANGUAGE,
                     response_format="text"
                 )
+            return transcript.strip()
         
-        console.print(f"[green]✓ Transcription:[/green] [cyan]\"{transcript}\"[/cyan]")
-        return transcript.strip()
+        transcript = await loop.run_in_executor(None, _transcribe)
+        return transcript
         
     except Exception as e:
         console.print(f"[bold red]❌ Error transcribing audio:[/bold red] {e}")
         return None
 
 
+def transcribe_audio(audio_path):
+    """Transcribe audio using OpenAI Whisper API (synchronous wrapper)."""
+    return asyncio.run(transcribe_audio_async(audio_path))
+
+
 # ============ EMOTION ANALYSIS ============
 
-def analyze_emotion(audio_path):
+async def analyze_emotion_async(audio_path):
     """
-    Analyze voice emotion using Hume.ai Prosody model.
+    Analyze voice emotion using Hume.ai Prosody model (async).
     
     Returns dict with top emotions or None if disabled/failed:
     {
@@ -304,39 +309,35 @@ def analyze_emotion(audio_path):
         return None
     
     if not HUME_API_KEY or HUME_API_KEY.startswith("your-"):
-        console.print("[dim]   🎭 Emotion analysis disabled (no API key)[/dim]")
         return None
     
     try:
-        console.print("[dim]   🎭 Analyzing voice emotion...[/dim]")
-        
-        # Hume.ai API integration
+        # Hume.ai API integration (run in thread pool since requests is synchronous)
         import requests
+        loop = asyncio.get_event_loop()
         
-        # Submit job to Hume.ai
-        with open(audio_path, 'rb') as audio_file:
-            files = {'file': audio_file}
-            json_data = {
-                'models': {
-                    'prosody': {}  # Voice/audio emotion model
+        def _submit_job():
+            with open(audio_path, 'rb') as audio_file:
+                files = {'file': audio_file}
+                json_data = {
+                    'models': {
+                        'prosody': {}
+                    }
                 }
-            }
-            
-            # Start inference job
-            response = requests.post(
-                'https://api.hume.ai/v0/batch/jobs',
-                headers={'X-Hume-Api-Key': HUME_API_KEY},
-                files=files,
-                data={'json': str(json_data).replace("'", '"')}
-            )
-            
-            if response.status_code != 200:
-                console.print(f"[yellow]⚠ Hume API error: {response.status_code}[/yellow]")
-                return None
-            
-            job_id = response.json()['job_id']
-            
-            # Poll for results (usually completes in 1-2 seconds)
+                
+                response = requests.post(
+                    'https://api.hume.ai/v0/batch/jobs',
+                    headers={'X-Hume-Api-Key': HUME_API_KEY},
+                    files=files,
+                    data={'json': str(json_data).replace("'", '"')}
+                )
+                
+                if response.status_code != 200:
+                    return None
+                
+                return response.json()['job_id']
+        
+        def _poll_results(job_id):
             max_wait = 10
             for i in range(max_wait):
                 time.sleep(0.5)
@@ -350,7 +351,6 @@ def analyze_emotion(audio_path):
                     job_status = status_response.json()['state']['status']
                     
                     if job_status == 'COMPLETED':
-                        # Get predictions
                         pred_response = requests.get(
                             f'https://api.hume.ai/v0/batch/jobs/{job_id}/predictions',
                             headers={'X-Hume-Api-Key': HUME_API_KEY}
@@ -359,14 +359,10 @@ def analyze_emotion(audio_path):
                         if pred_response.status_code == 200:
                             predictions = pred_response.json()
                             
-                            # Extract emotion scores from prosody model
                             if predictions and len(predictions) > 0:
                                 prosody_predictions = predictions[0]['results']['predictions'][0]['models']['prosody']['grouped_predictions'][0]['predictions'][0]['emotions']
-                                
-                                # Sort by score and get top N
                                 sorted_emotions = sorted(prosody_predictions, key=lambda x: x['score'], reverse=True)
                                 
-                                # Filter by minimum score
                                 top_emotions = []
                                 scores = {}
                                 
@@ -380,27 +376,39 @@ def analyze_emotion(audio_path):
                                         scores[emotion_name] = emotion_score
                                 
                                 if top_emotions:
-                                    emotion_str = ', '.join(top_emotions)
-                                    console.print(f"[magenta]🎭 Detected emotions:[/magenta] [dim]{emotion_str}[/dim]")
                                     return {
                                         'top_emotions': top_emotions,
                                         'scores': scores
                                     }
-                                else:
-                                    console.print("[dim]   🎭 No significant emotions detected[/dim]")
-                                    return None
-                        break
+                        return None
                     
                     elif job_status == 'FAILED':
-                        console.print("[yellow]⚠ Emotion analysis failed[/yellow]")
                         return None
             
-            console.print("[yellow]⚠ Emotion analysis timed out[/yellow]")
             return None
+        
+        # Submit job (blocking I/O, run in executor)
+        job_id = await loop.run_in_executor(None, _submit_job)
+        if not job_id:
+            return None
+        
+        # Poll for results (blocking I/O, run in executor)
+        result = await loop.run_in_executor(None, _poll_results, job_id)
+        
+        if result and result.get('top_emotions'):
+            emotion_str = ', '.join(result['top_emotions'])
+            console.print(f"[magenta]🎭 Detected emotions:[/magenta] [dim]{emotion_str}[/dim]")
+        
+        return result
             
     except Exception as e:
         console.print(f"[dim]⚠ Emotion analysis error: {e}[/dim]")
         return None
+
+
+def analyze_emotion(audio_path):
+    """Analyze emotion (synchronous wrapper)."""
+    return asyncio.run(analyze_emotion_async(audio_path))
 
 
 # ============ AUDIO PROCESSOR ============

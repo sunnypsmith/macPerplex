@@ -386,6 +386,11 @@ async def analyze_emotion_async(audio_path):
                                 
                                 sorted_emotions = sorted(prosody_predictions, key=lambda x: x.get('score', 0), reverse=True)
                                 
+                                # Show top 5 detected emotions for debugging
+                                top_5_debug = sorted_emotions[:5]
+                                debug_str = ', '.join([f"{e.get('name', 'unknown')}({e.get('score', 0):.2f})" for e in top_5_debug])
+                                console.print(f"[dim]   Top 5 emotions detected: {debug_str}[/dim]")
+                                
                                 top_emotions = []
                                 scores = {}
                                 
@@ -399,44 +404,44 @@ async def analyze_emotion_async(audio_path):
                                             top_emotions.append(emotion_name)
                                             scores[emotion_name] = emotion_score
                                 
-                                if top_emotions:
-                                    # Always calculate confidence as average of top emotion scores
-                                    avg_confidence = round(sum(scores.values()) / len(scores), 2) if scores else 0.0
-                                    
-                                    # Try to extract time window from Hume response
-                                    window_ms = None
-                                    try:
-                                        # Check multiple possible locations for time data
-                                        if 'time' in preds[0]:
-                                            time_info = preds[0]['time']
-                                            begin = time_info.get('begin')
-                                            end = time_info.get('end')
-                                            if begin is not None and end is not None:
-                                                window_ms = int((end - begin) * 1000)
-                                    except (KeyError, TypeError, ValueError):
-                                        pass
-                                    
-                                    # If no time window, estimate from audio duration
-                                    if not window_ms:
-                                        # Could pass audio duration, but for now use None
-                                        pass
-                                    
-                                    # Build metadata
-                                    metadata = {
-                                        'confidence': avg_confidence,
-                                        'granularity': 'utterance'  # Hume analyzes whole utterance
-                                    }
-                                    if window_ms:
-                                        metadata['window_ms'] = window_ms
-                                    
-                                    return {
-                                        'top_emotions': top_emotions,
-                                        'scores': scores,
-                                        'metadata': metadata
-                                    }
-                                else:
-                                    console.print("[dim]⚠ No emotions met minimum score threshold[/dim]")
+                                if not top_emotions:
+                                    console.print(f"[yellow]⚠ No emotions met minimum score threshold ({EMOTION_MIN_SCORE})[/yellow]")
                                     return None
+                                
+                                # Always calculate confidence as average of top emotion scores
+                                avg_confidence = round(sum(scores.values()) / len(scores), 2) if scores else 0.0
+                                
+                                # Try to extract time window from Hume response
+                                window_ms = None
+                                try:
+                                    # Check multiple possible locations for time data
+                                    if 'time' in preds[0]:
+                                        time_info = preds[0]['time']
+                                        begin = time_info.get('begin')
+                                        end = time_info.get('end')
+                                        if begin is not None and end is not None:
+                                            window_ms = int((end - begin) * 1000)
+                                except (KeyError, TypeError, ValueError):
+                                    pass
+                                
+                                # If no time window, estimate from audio duration
+                                if not window_ms:
+                                    # Could pass audio duration, but for now use None
+                                    pass
+                                
+                                # Build metadata
+                                metadata = {
+                                    'confidence': avg_confidence,
+                                    'granularity': 'utterance'  # Hume analyzes whole utterance
+                                }
+                                if window_ms:
+                                    metadata['window_ms'] = window_ms
+                                
+                                return {
+                                    'top_emotions': top_emotions,
+                                    'scores': scores,
+                                    'metadata': metadata
+                                }
                                     
                             except (KeyError, IndexError, TypeError) as parse_error:
                                 console.print(f"[yellow]⚠ Error parsing Hume response:[/yellow] {parse_error}")

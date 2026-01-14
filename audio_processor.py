@@ -105,16 +105,8 @@ class AudioRecorder:
         self.audio_chunks = []
         self.screenshot_path = None
         
-        # Screenshot capture handled externally now
-        if take_screenshot:
-            console.print(f"[cyan]📸 Capturing screenshot of {app_name or 'window'}...[/cyan]")
-            # Import here to avoid circular dependency
-            from macPerplex import capture_screenshot_func
-            self.screenshot_path = capture_screenshot_func(window_id, app_name, window_bounds)
-            if self.screenshot_path:
-                console.print("[green]✓ Screenshot captured![/green]")
-            else:
-                console.print("[yellow]⚠ Screenshot failed, continuing with audio only[/yellow]")
+        # Note: Screenshot capture is handled by main script before calling audio processor
+        # The take_screenshot parameter is kept for API compatibility but not used
         
         mode = "with screenshot" if self.capture_screenshot else "audio only"
         console.print(f"[bold]🎤 Recording {mode}...[/bold] [dim](release pedal to stop)[/dim]")

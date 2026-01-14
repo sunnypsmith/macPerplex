@@ -736,11 +736,13 @@ def send_to_perplexity(driver, wait, result, screenshot_path=None):
         # Add emotion context to message if emotions detected (structured JSON format)
         if emotions and emotion_scores and ENABLE_EMOTION_ANALYSIS:
             import json
-            # Build structured emotion metadata
-            emotion_metadata = {emotion: score for emotion, score in emotion_scores.items()}
-            emotion_metadata['source'] = 'hume_prosody'
+            # Build structured emotion metadata with scores nested
+            emotion_data = {
+                'scores': emotion_scores,  # Nested emotion scores
+                'source': 'hume_prosody'
+            }
             
-            emotion_json = json.dumps(emotion_metadata, separators=(',', ':'))
+            emotion_json = json.dumps(emotion_data, separators=(',', ':'))
             emotion_context = f"[voice_affect: {emotion_json}] "
             message_with_context = emotion_context + message_text
             

@@ -407,11 +407,31 @@ async def analyze_emotion_async(audio_path):
                                             top_emotions.append(emotion_name)
                                             scores[emotion_name] = emotion_score
                                 
+                                # Extract metadata if available
+                                metadata = {}
+                                
+                                # Try to get window size (time window in ms)
+                                if 'time' in preds[0]:
+                                    time_info = preds[0].get('time', {})
+                                    begin = time_info.get('begin', 0)
+                                    end = time_info.get('end', 0)
+                                    if begin and end:
+                                        window_ms = int((end - begin) * 1000)
+                                        metadata['window_ms'] = window_ms
+                                
+                                # Calculate average confidence from top emotions
+                                if scores:
+                                    avg_confidence = round(sum(scores.values()) / len(scores), 2)
+                                    metadata['confidence'] = avg_confidence
+                                
                                 if top_emotions:
-                                    return {
+                                    result = {
                                         'top_emotions': top_emotions,
                                         'scores': scores
                                     }
+                                    if metadata:
+                                        result['metadata'] = metadata
+                                    return result
                                 else:
                                     console.print("[dim]⚠ No emotions met minimum score threshold[/dim]")
                                     return None

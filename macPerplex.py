@@ -738,9 +738,17 @@ def send_to_perplexity(driver, wait, result, screenshot_path=None):
             import json
             # Build structured emotion metadata with scores nested
             emotion_data = {
-                'scores': emotion_scores,  # Nested emotion scores
-                'source': 'hume_prosody'
+                'source': 'hume_prosody',
+                'scores': emotion_scores
             }
+            
+            # Add optional metadata if available
+            if 'metadata' in result:
+                metadata = result['metadata']
+                if 'window_ms' in metadata:
+                    emotion_data['window_ms'] = metadata['window_ms']
+                if 'confidence' in metadata:
+                    emotion_data['confidence'] = metadata['confidence']
             
             emotion_json = json.dumps(emotion_data, separators=(',', ':'))
             emotion_context = f"[voice_affect: {emotion_json}] "

@@ -11,6 +11,24 @@ OPENAI_API_KEY = "your-openai-api-key-here"
 # Options: "gpt-4o-transcribe" (faster, better) or "whisper-1" (original)
 OPENAI_STT_MODEL = "gpt-4o-transcribe"
 
+# ============================================================================
+# Emotion Analysis (Optional)
+# ============================================================================
+# Hume.ai API Key for voice emotion analysis
+# Get your API key from: https://platform.hume.ai
+# Analyzes vocal tone, pitch, and intensity to detect emotions like frustration,
+# excitement, confusion, etc. Adds emotional context to your Perplexity queries.
+HUME_API_KEY = "your-hume-api-key-here"
+
+# Enable/disable emotion analysis
+# When enabled, each query includes detected emotions as context
+# Note: Adds ~1-2 seconds latency and costs per query (check Hume.ai pricing)
+ENABLE_EMOTION_ANALYSIS = False  # Set to True to enable
+
+# Emotion analysis settings
+EMOTION_TOP_N = 3  # Include top N emotions in context (e.g., top 3: frustrated, confused, focused)
+EMOTION_MIN_SCORE = 0.3  # Only include emotions with confidence score > 0.3 (0.0-1.0 range)
+
 # Transcription Language (ISO 639-1 code)
 # Constrains Whisper to a specific language for better accuracy and prevents
 # unexpected languages from appearing in transcription

@@ -742,13 +742,12 @@ def send_to_perplexity(driver, wait, result, screenshot_path=None):
                 'scores': emotion_scores
             }
             
-            # Add optional metadata if available
-            if 'metadata' in result:
-                metadata = result['metadata']
-                if 'window_ms' in metadata:
-                    emotion_data['window_ms'] = metadata['window_ms']
-                if 'confidence' in metadata:
-                    emotion_data['confidence'] = metadata['confidence']
+            # Add metadata if available
+            if result.get('emotion_metadata'):
+                metadata = result['emotion_metadata']
+                # Add all metadata fields
+                for key, value in metadata.items():
+                    emotion_data[key] = value
             
             emotion_json = json.dumps(emotion_data, separators=(',', ':'))
             emotion_context = f"[voice_affect: {emotion_json}] "

@@ -557,7 +557,8 @@ class AudioProcessor:
             'audio_path': audio_path,
             'transcript': transcript,
             'emotions': emotion_data['top_emotions'] if emotion_data else None,
-            'emotion_scores': emotion_data['scores'] if emotion_data else None
+            'emotion_scores': emotion_data['scores'] if emotion_data else None,
+            'emotion_metadata': emotion_data['metadata'] if emotion_data and 'metadata' in emotion_data else None
         }
     
     def stop_recording_and_process(self):

@@ -746,8 +746,10 @@ def send_to_perplexity(driver, wait, result, screenshot_path=None):
             
             emotions_display = ', '.join([f"{e}({emotion_scores[e]:.2f})" for e in emotions])
             console.print(f"[magenta]🎭 Adding emotion context:[/magenta] [dim]{emotions_display}[/dim]")
+            console.print(f"[dim]   Full message to send: {message_with_context[:100]}...[/dim]")
         else:
             message_with_context = message_text
+            console.print(f"[dim]   No emotion context (emotions={emotions}, scores={emotion_scores}, enabled={ENABLE_EMOTION_ANALYSIS})[/dim]")
         
         # Step 2: Check if we have a screenshot (captured earlier)
         if screenshot_path:

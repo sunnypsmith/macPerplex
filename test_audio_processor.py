@@ -20,8 +20,13 @@ from audio_processor import AudioProcessor, play_double_beep, play_stop_beep
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from pynput import keyboard
 
 console = Console()
+
+# Global flag for recording control
+is_recording = False
+recording_started = False
 
 def test_audio_recording():
     """Test audio recording and processing."""
@@ -43,25 +48,53 @@ def test_audio_recording():
     play_stop_beep()
     console.print("[green]✓ Beeps work![/green]")
     
-    # Test 2: Recording
+    # Test 2: Recording with keyboard control
     console.print("\n[bold]Test 2: Audio Recording[/bold]")
-    console.print("[yellow]Get ready to speak...[/yellow]")
-    time.sleep(1)
+    console.print("\n[bold yellow]📋 Instructions:[/bold yellow]")
+    console.print("  [cyan]Press and HOLD SPACE[/cyan] to start recording")
+    console.print("  [cyan]Release SPACE[/cyan] to stop recording and process")
+    console.print("  [dim]Say something with emotion (frustrated, excited, confused, etc.)[/dim]")
+    console.print("\n[bold]Ready when you are...[/bold]\n")
     
-    console.print("\n[bold green]🎤 RECORDING NOW - Speak for 5 seconds![/bold green]")
-    console.print("[dim]Say something with emotion (frustrated, excited, confused, etc.)[/dim]")
+    global is_recording, recording_started
+    result = None
     
-    play_double_beep()
-    processor.start_recording(take_screenshot=False)
+    def on_press(key):
+        global is_recording, recording_started
+        try:
+            if key == keyboard.Key.space and not is_recording:
+                is_recording = True
+                recording_started = True
+                console.print("\n[bold green]🎤 RECORDING...[/bold green] [dim](release SPACE to stop)[/dim]")
+                play_double_beep()
+                processor.start_recording(take_screenshot=False)
+        except:
+            pass
     
-    # Record for 5 seconds
-    time.sleep(5)
+    def on_release(key):
+        global is_recording
+        try:
+            if key == keyboard.Key.space and is_recording:
+                is_recording = False
+                play_stop_beep()
+                console.print("\n[bold]⏸️  Processing audio...[/bold]")
+                return False  # Stop listener
+            elif key == keyboard.Key.esc:
+                console.print("\n[yellow]Test cancelled[/yellow]")
+                return False  # Stop listener
+        except:
+            pass
     
-    play_stop_beep()
-    console.print("\n[bold]⏸️  Processing audio...[/bold]")
+    # Start keyboard listener
+    with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
+        listener.join()
     
-    # Stop and process
-    result = processor.stop_recording_and_process()
+    # Process if recording was done
+    if recording_started:
+        result = processor.stop_recording_and_process()
+    else:
+        console.print("[yellow]No recording made[/yellow]")
+        return
     
     # Display results
     if result:

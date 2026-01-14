@@ -306,12 +306,15 @@ async def analyze_emotion_async(audio_path):
     }
     """
     if not ENABLE_EMOTION_ANALYSIS:
+        console.print("[dim]   🎭 Emotion analysis disabled in config[/dim]")
         return None
     
     if not HUME_API_KEY or HUME_API_KEY.startswith("your-"):
+        console.print("[dim]   🎭 Emotion analysis disabled (no API key)[/dim]")
         return None
     
     try:
+        console.print("[dim]   🎭 Analyzing voice emotion...[/dim]")
         # Hume.ai API integration (run in thread pool since requests is synchronous)
         import requests
         loop = asyncio.get_event_loop()
@@ -427,7 +430,10 @@ async def analyze_emotion_async(audio_path):
         # Submit job (blocking I/O, run in executor)
         job_id = await loop.run_in_executor(None, _submit_job)
         if not job_id:
+            console.print("[yellow]⚠ Failed to submit Hume job[/yellow]")
             return None
+        
+        console.print(f"[dim]   Job submitted: {job_id}[/dim]")
         
         # Poll for results (blocking I/O, run in executor)
         result = await loop.run_in_executor(None, _poll_results, job_id)

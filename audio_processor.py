@@ -359,9 +359,37 @@ async def analyze_emotion_async(audio_path):
                         if pred_response.status_code == 200:
                             predictions = pred_response.json()
                             
-                            if predictions and len(predictions) > 0:
-                                prosody_predictions = predictions[0]['results']['predictions'][0]['models']['prosody']['grouped_predictions'][0]['predictions'][0]['emotions']
-                                sorted_emotions = sorted(prosody_predictions, key=lambda x: x['score'], reverse=True)
+                            # Defensive parsing of nested Hume response structure
+                            try:
+                                if not predictions or not isinstance(predictions, list) or len(predictions) == 0:
+                                    console.print("[dim]⚠ Hume returned empty predictions[/dim]")
+                                    return None
+                                
+                                # Navigate through nested structure safely
+                                results = predictions[0].get('results', {})
+                                pred_list = results.get('predictions', [])
+                                if not pred_list:
+                                    console.print("[dim]⚠ No predictions in results[/dim]")
+                                    return None
+                                
+                                models = pred_list[0].get('models', {})
+                                prosody = models.get('prosody', {})
+                                grouped = prosody.get('grouped_predictions', [])
+                                if not grouped:
+                                    console.print("[dim]⚠ No grouped predictions[/dim]")
+                                    return None
+                                
+                                preds = grouped[0].get('predictions', [])
+                                if not preds:
+                                    console.print("[dim]⚠ No predictions in group[/dim]")
+                                    return None
+                                
+                                prosody_predictions = preds[0].get('emotions', [])
+                                if not prosody_predictions:
+                                    console.print("[dim]⚠ No emotions in predictions[/dim]")
+                                    return None
+                                
+                                sorted_emotions = sorted(prosody_predictions, key=lambda x: x.get('score', 0), reverse=True)
                                 
                                 top_emotions = []
                                 scores = {}
@@ -369,18 +397,26 @@ async def analyze_emotion_async(audio_path):
                                 for emotion in sorted_emotions:
                                     if len(top_emotions) >= EMOTION_TOP_N:
                                         break
-                                    if emotion['score'] >= EMOTION_MIN_SCORE:
-                                        # Lowercase and use underscores for JSON keys
-                                        emotion_name = emotion['name'].lower().replace(' ', '_')
-                                        emotion_score = round(emotion['score'], 2)
-                                        top_emotions.append(emotion_name)
-                                        scores[emotion_name] = emotion_score
+                                    if emotion.get('score', 0) >= EMOTION_MIN_SCORE:
+                                        emotion_name = emotion.get('name', '').lower().replace(' ', '_')
+                                        emotion_score = round(emotion.get('score', 0), 2)
+                                        if emotion_name:  # Only add if name exists
+                                            top_emotions.append(emotion_name)
+                                            scores[emotion_name] = emotion_score
                                 
                                 if top_emotions:
                                     return {
                                         'top_emotions': top_emotions,
                                         'scores': scores
                                     }
+                                else:
+                                    console.print("[dim]⚠ No emotions met minimum score threshold[/dim]")
+                                    return None
+                                    
+                            except (KeyError, IndexError, TypeError) as parse_error:
+                                console.print(f"[yellow]⚠ Error parsing Hume response:[/yellow] {parse_error}")
+                                console.print(f"[dim]Response structure: {str(predictions)[:200]}...[/dim]")
+                                return None
                         return None
                     
                     elif job_status == 'FAILED':

@@ -741,7 +741,7 @@ def send_to_perplexity(driver, wait, result, screenshot_path=None):
             emotion_metadata['source'] = 'hume_prosody'
             
             emotion_json = json.dumps(emotion_metadata, separators=(',', ':'))
-            emotion_context = f"[voice_affect: {emotion_json}]\n"
+            emotion_context = f"[voice_affect: {emotion_json}] "
             message_with_context = emotion_context + message_text
             
             emotions_display = ', '.join([f"{e}({emotion_scores[e]:.2f})" for e in emotions])

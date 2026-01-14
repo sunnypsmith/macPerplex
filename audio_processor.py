@@ -428,9 +428,9 @@ class AudioProcessor:
         """Start audio recording."""
         self.recorder.start_recording(take_screenshot, window_id, app_name, window_bounds)
     
-    def stop_recording_and_process(self):
+    async def stop_recording_and_process_async(self):
         """
-        Stop recording and process audio (transcription + optional emotion analysis).
+        Stop recording and process audio (transcription + emotion analysis in parallel).
         
         Returns dict:
         {
@@ -446,17 +446,39 @@ class AudioProcessor:
         if not audio_path:
             return None
         
-        # Run transcription and emotion analysis in parallel (future optimization)
-        # For now, run sequentially
+        # Show processing status
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold cyan]Processing (transcription + emotion analysis)..."),
+            console=console
+        ) as progress:
+            task = progress.add_task("process", total=None)
+            
+            # Run transcription and emotion analysis in parallel!
+            if ENABLE_EMOTION_ANALYSIS:
+                transcript, emotion_data = await asyncio.gather(
+                    transcribe_audio_async(audio_path),
+                    analyze_emotion_async(audio_path),
+                    return_exceptions=True  # Don't fail if one fails
+                )
+                
+                # Handle exceptions
+                if isinstance(transcript, Exception):
+                    console.print(f"[bold red]❌ Transcription error:[/bold red] {transcript}")
+                    transcript = None
+                
+                if isinstance(emotion_data, Exception):
+                    console.print(f"[yellow]⚠ Emotion analysis error:[/yellow] {emotion_data}")
+                    emotion_data = None
+            else:
+                # Only transcribe if emotion analysis disabled
+                transcript = await transcribe_audio_async(audio_path)
+                emotion_data = None
         
-        transcript = transcribe_audio(audio_path)
         if not transcript:
             return None
         
-        # Analyze emotion if enabled
-        emotion_data = None
-        if ENABLE_EMOTION_ANALYSIS:
-            emotion_data = analyze_emotion(audio_path)
+        console.print(f"[green]✓ Transcription:[/green] [cyan]\"{transcript}\"[/cyan]")
         
         return {
             'audio_path': audio_path,
@@ -464,3 +486,7 @@ class AudioProcessor:
             'emotions': emotion_data['top_emotions'] if emotion_data else None,
             'emotion_scores': emotion_data['scores'] if emotion_data else None
         }
+    
+    def stop_recording_and_process(self):
+        """Stop recording and process (synchronous wrapper for async method)."""
+        return asyncio.run(self.stop_recording_and_process_async())

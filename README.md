@@ -92,16 +92,48 @@ The app automatically:
 - Switches back to normal Search mode if you don't say "research"
 - Each query sets its own mode independently
 
+### Voice Emotion Analysis (Optional)
+
+macPerplex can analyze your voice tone and add emotional context to queries using [Hume.ai](https://hume.ai):
+
+**How it works:**
+- Analyzes voice tone, pitch, and intensity while you speak
+- Detects 48 different emotions (frustration, excitement, confusion, etc.)
+- Adds top 3 emotions as context to your Perplexity prompt
+- Runs in parallel with transcription (no extra delay)
+
+**Example:**
+```
+You say (frustrated tone): "What is this error message?"
+Perplexity receives: "[User emotion: Frustrated, Confused, Focused] What is this error message?"
+```
+
+**Configuration:**
+Set in `config.py`:
+- `HUME_API_KEY` - Get from https://platform.hume.ai
+- `ENABLE_EMOTION_ANALYSIS = True/False` - Toggle feature
+- `EMOTION_TOP_N = 3` - How many emotions to include
+- `EMOTION_MIN_SCORE = 0.3` - Confidence threshold
+
+**Benefits:**
+- AI can tailor responses to your emotional state
+- More empathetic/appropriate answers
+- Especially helpful when frustrated or confused
+
 ## Configuration
 
 Edit `config.py` to customize:
-- `OPENAI_API_KEY` - Your OpenAI API key
+- `OPENAI_API_KEY` - Your OpenAI API key (required)
 - `OPENAI_STT_MODEL` - Transcription model (gpt-4o-transcribe or whisper-1)
 - `TRANSCRIPTION_LANGUAGE` - Language code (default: "en" for English)
   - Constrains transcription to specific language for better accuracy
   - Prevents unexpected languages appearing in transcription
   - Common options: "en", "es", "fr", "de", "zh", "ja"
   - [Full list of ISO 639-1 codes](https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes)
+- `HUME_API_KEY` - Your Hume.ai API key (optional, for emotion analysis)
+- `ENABLE_EMOTION_ANALYSIS` - Toggle emotion analysis on/off
+- `EMOTION_TOP_N` - Number of emotions to include (default: 3)
+- `EMOTION_MIN_SCORE` - Minimum confidence threshold (default: 0.3)
 - `TRIGGER_KEY_WITH_SCREENSHOT` - Key for screenshot mode (default: cmd_r)
 - `TRIGGER_KEY_AUDIO_ONLY` - Key for audio-only mode (default: shift_r)
 - Audio recording settings
@@ -127,7 +159,8 @@ Edit `config.py` to customize:
 - macOS
 - Python 3.10+
 - Google Chrome
-- OpenAI API key
+- OpenAI API key (required - for speech-to-text)
+- Hume.ai API key (optional - for emotion analysis)
 - PySide6 (for region selection overlay)
 - Rich (for beautiful terminal output)
 

@@ -5,9 +5,23 @@ All notable changes to macPerplex will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2026-01-12
+## [Unreleased]
 
 ### Added
+- **Voice emotion analysis** with Hume.ai integration
+  - Analyzes voice tone, pitch, and intensity
+  - Detects 48 emotions (frustration, excitement, confusion, etc.)
+  - Adds top N emotions as context to Perplexity prompts
+  - Runs in parallel with transcription (no added latency)
+  - Configurable via ENABLE_EMOTION_ANALYSIS
+- Modular audio processing (audio_processor.py)
+  - Clean separation of audio handling
+  - Async parallel processing with asyncio
+  - Easier to test and maintain
+
+## [1.1.0] - 2026-01-12
+
+### Added  
 - Automatic Deep Research mode when "research" is spoken in query
   - Detects "research" keyword in transcription
   - Automatically clicks Research/Search button in segmented control

@@ -20,16 +20,19 @@ import subprocess
 from pathlib import Path
 from datetime import datetime
 from pynput import keyboard
-import sounddevice as sd
-import numpy as np
-import wave
-from openai import OpenAI
 import socket
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
-from rich.live import Live
-from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+
+# Import audio processing module
+from audio_processor import (
+    AudioProcessor,
+    play_double_beep,
+    play_start_beep,
+    play_stop_beep,
+    play_submit_beep
+)
 
 # Rich console for beautiful output
 console = Console()
@@ -38,13 +41,9 @@ console = Console()
 try:
     from config import (
         OPENAI_API_KEY,
-        OPENAI_STT_MODEL,
-        TRANSCRIPTION_LANGUAGE,
+        ENABLE_EMOTION_ANALYSIS,
         TRIGGER_KEY_WITH_SCREENSHOT,
-        TRIGGER_KEY_AUDIO_ONLY,
-        AUDIO_SAMPLE_RATE,
-        AUDIO_CHANNELS,
-        MAX_RECORDING_DURATION
+        TRIGGER_KEY_AUDIO_ONLY
     )
 except ImportError:
     print("❌ Error: config.py not found!")
@@ -57,42 +56,6 @@ PERPLEXITY_WINDOW_HANDLE = None
 
 # Global region selector instance
 REGION_SELECTOR = None
-
-
-# ============ AUDIO FEEDBACK ============
-def play_beep(frequency=800, duration=0.1, volume=0.3):
-    """Play a simple beep tone for audio feedback."""
-    try:
-        sample_rate = 44100
-        samples = int(sample_rate * duration)
-        t = np.linspace(0, duration, samples, False)
-        tone = volume * np.sin(2 * np.pi * frequency * t)
-        sd.play(tone, sample_rate)
-        sd.wait()
-    except Exception as e:
-        # Don't let beep failures break the app
-        pass
-
-def play_double_beep():
-    """Play double beep for screenshot + audio mode."""
-    try:
-        play_beep(800, 0.08, 0.25)  # First beep
-        time.sleep(0.05)
-        play_beep(1000, 0.08, 0.25)  # Second beep (higher)
-    except Exception:
-        pass  # Don't let audio failures break the app
-
-def play_start_beep():
-    """Play single beep for audio-only mode start."""
-    play_beep(900, 0.1, 0.3)
-
-def play_stop_beep():
-    """Play beep when recording stops."""
-    play_beep(700, 0.12, 0.3)  # Lower tone
-
-def play_submit_beep():
-    """Play beep when message is submitted."""
-    play_beep(1200, 0.15, 0.25)  # Higher, longer tone
 
 
 # ============ REGION SELECTION WITH QT OVERLAY ============
@@ -333,212 +296,6 @@ def check_permissions():
         console.print("   [bold green]✓ All permissions OK![/bold green]\n")
     
     return all_ok
-
-# ============ AUDIO RECORDING ============
-class AudioRecorder:
-    """Simple push-to-talk audio recorder with live visualization."""
-    def __init__(self):
-        self.is_recording = False
-        self.audio_chunks = []
-        self.stream = None
-        self.capture_screenshot = True  # Track whether to capture screenshot
-        self.screenshot_path = None  # Store screenshot taken at start
-        self.live_display = None  # Rich Live display for audio visualization
-        self.start_time = None  # Track recording start time
-    
-    def start_recording(self, take_screenshot=False, window_id=None, app_name=None, window_bounds=None):
-        """Start recording audio. Optionally capture screenshot of specified window."""
-        if self.is_recording:
-            return
-        
-        self.is_recording = True
-        self.audio_chunks = []
-        self.screenshot_path = None
-        
-        # Capture screenshot using the pre-captured window ID and bounds
-        if take_screenshot:
-            console.print(f"[cyan]📸 Capturing screenshot of {app_name or 'window'}...[/cyan]")
-            self.screenshot_path = capture_screenshot_func(window_id, app_name, window_bounds)
-            if self.screenshot_path:
-                console.print("[green]✓ Screenshot captured![/green]")
-            else:
-                console.print("[yellow]⚠ Screenshot failed, continuing with audio only[/yellow]")
-        
-        mode = "with screenshot" if self.capture_screenshot else "audio only"
-        console.print(f"[bold]🎤 Recording {mode}...[/bold] [dim](release pedal to stop)[/dim]")
-        
-        self.start_time = time.time()
-        
-        def audio_callback(indata, frames, time_info, status):
-            # Check if max recording duration exceeded
-            if self.start_time and (time.time() - self.start_time) > MAX_RECORDING_DURATION:
-                # Stop recording automatically
-                console.print(f"\n[yellow]⚠ Max recording duration ({MAX_RECORDING_DURATION}s) reached, stopping...[/yellow]")
-                raise sd.CallbackAbort()
-            
-            # Calculate RMS (volume level)
-            rms = np.sqrt(np.mean(indata**2))
-            
-            # Store audio data
-            self.audio_chunks.append(indata.copy())
-            
-            # Update live display with audio visualization
-            if self.live_display and self.start_time:
-                elapsed = time.time() - self.start_time
-                
-                # Create visual bar based on audio level
-                bar_length = int(rms * 50)  # Scale to reasonable length
-                bar_length = min(bar_length, 40)  # Cap at 40
-                
-                if rms > 0.02:
-                    bar = "█" * bar_length
-                    color = "green"
-                elif rms > 0.01:
-                    bar = "▓" * bar_length
-                    color = "yellow"
-                else:
-                    bar = "░" * max(1, bar_length)
-                    color = "dim"
-                
-                # Format elapsed time
-                mins = int(elapsed // 60)
-                secs = int(elapsed % 60)
-                time_str = f"{mins:02d}:{secs:02d}"
-                
-                display_text = Text()
-                display_text.append("🔴 RECORDING ", style="bold red")
-                display_text.append(f"[{time_str}]", style="cyan")
-                display_text.append("\n")
-                display_text.append("Audio: ", style="dim")
-                display_text.append(bar, style=color)
-                
-                try:
-                    self.live_display.update(Panel(display_text, border_style="red", width=60))
-                except Exception:
-                    pass  # Live display update failures shouldn't crash recording
-        
-        try:
-            # Start live display
-            self.live_display = Live(console=console, refresh_per_second=10)
-            self.live_display.start()
-            
-            self.stream = sd.InputStream(
-                samplerate=AUDIO_SAMPLE_RATE,
-                channels=AUDIO_CHANNELS,
-                dtype='float32',
-                blocksize=1024,
-                callback=audio_callback
-            )
-            self.stream.start()
-        except Exception as e:
-            console.print(f"\n[bold red]❌ Error starting recording:[/bold red] {e}")
-            self.is_recording = False
-            
-            # Clean up live display
-            if self.live_display:
-                try:
-                    self.live_display.stop()
-                except Exception:
-                    pass
-                self.live_display = None
-            
-            # Clean up stream if it was created but failed to start
-            if self.stream:
-                try:
-                    self.stream.close()
-                except Exception:
-                    pass
-                self.stream = None
-    
-    def stop_recording(self):
-        """Stop recording and save audio file."""
-        if not self.is_recording:
-            return None
-        
-        self.is_recording = False
-        
-        # Stop live display
-        if self.live_display:
-            self.live_display.stop()
-            self.live_display = None
-        
-        try:
-            if self.stream:
-                self.stream.stop()
-                self.stream.close()
-                self.stream = None
-            
-            console.print("[green]✓ Recording stopped[/green]")
-            
-            if not self.audio_chunks:
-                console.print("[yellow]⚠ No audio recorded[/yellow]")
-                return None
-            
-            # Combine all chunks
-            audio_data = np.concatenate(self.audio_chunks, axis=0)
-            
-            # Normalize audio for better Whisper transcription
-            peak = np.max(np.abs(audio_data))
-            if peak > 0:
-                # Target 90% of max volume, but don't boost if too quiet (likely noise/silence)
-                if peak > 0.05:
-                    scaling_factor = 0.9 / peak
-                    # Cap boost at 10x to prevent noise amplification
-                    scaling_factor = min(scaling_factor, 10.0)
-                    audio_data = audio_data * scaling_factor
-                    console.print(f"[dim]   🔊 Normalized audio (boost: {scaling_factor:.1f}x, peak: {peak:.2f})[/dim]")
-                else:
-                    console.print(f"[dim]   🔇 Audio too quiet to normalize (peak: {peak:.2f})[/dim]")
-            
-            # Save to WAV file
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            audio_path = Path(f"/tmp/perplexity_audio_{timestamp}.wav")
-            
-            # Convert to int16 for WAV
-            audio_int16 = (audio_data * 32767).astype(np.int16)
-            
-            with wave.open(str(audio_path), 'wb') as wf:
-                wf.setnchannels(AUDIO_CHANNELS)
-                wf.setsampwidth(2)  # 2 bytes for int16
-                wf.setframerate(AUDIO_SAMPLE_RATE)
-                wf.writeframes(audio_int16.tobytes())
-            
-            duration = len(audio_data) / AUDIO_SAMPLE_RATE
-            console.print(f"[green]✓ Audio saved:[/green] [dim]{audio_path}[/dim] [cyan]({duration:.1f} seconds)[/cyan]")
-            return str(audio_path)
-            
-        except Exception as e:
-            console.print(f"[bold red]❌ Error stopping recording:[/bold red] {e}")
-            return None
-
-
-def transcribe_audio(audio_path):
-    """Transcribe audio using OpenAI Whisper API."""
-    try:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold cyan]Transcribing audio..."),
-            console=console
-        ) as progress:
-            task = progress.add_task("transcribe", total=None)
-            
-            client = OpenAI(api_key=OPENAI_API_KEY)
-            
-            with open(audio_path, "rb") as audio_file:
-                transcript = client.audio.transcriptions.create(
-                    model=OPENAI_STT_MODEL,
-                    file=audio_file,
-                    language=TRANSCRIPTION_LANGUAGE,
-                    response_format="text"
-                )
-        
-        console.print(f"[green]✓ Transcription:[/green] [cyan]\"{transcript}\"[/cyan]")
-        return transcript.strip()
-        
-    except Exception as e:
-        console.print(f"[bold red]❌ Error transcribing audio:[/bold red] {e}")
-        return None
-
 
 # ============ SCREENSHOT CAPTURE ============
 
@@ -953,23 +710,36 @@ def capture_screenshot_func(target_window_id=None, target_app_name=None, window_
         return None
 
 # ============ MAIN PROCESSING FUNCTION ============
-def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
-    """Transcribe audio and send to Perplexity with optional screenshot."""
+def send_to_perplexity(driver, wait, result, screenshot_path=None):
+    """Send transcribed audio and optional screenshot to Perplexity with emotion context.
+    
+    Args:
+        result: Dict from AudioProcessor with transcript, emotions, etc.
+        screenshot_path: Optional path to screenshot
+    """
     
     try:
         console.print("\n[dim]" + "="*60 + "[/dim]")
         console.print("[bold cyan]🎯 PROCESSING...[/bold cyan]")
         console.print("[dim]" + "="*60 + "[/dim]")
         
-        if not audio_path:
-            console.print("[bold red]❌ No audio recorded, aborting...[/bold red]")
+        if not result:
+            console.print("[bold red]❌ No audio data, aborting...[/bold red]")
             return
         
-        # Step 1: Transcribe audio
-        message_text = transcribe_audio(audio_path)
-        if not message_text:
-            console.print("[bold red]❌ Transcription failed, aborting...[/bold red]")
-            return
+        # Step 1: Get transcript and emotion data from result
+        message_text = result['transcript']
+        emotions = result.get('emotions')
+        emotion_scores = result.get('emotion_scores')
+        audio_path = result.get('audio_path')
+        
+        # Add emotion context to message if emotions detected
+        if emotions and ENABLE_EMOTION_ANALYSIS:
+            emotion_context = f"[User emotion: {', '.join(emotions)}] "
+            message_with_context = emotion_context + message_text
+            console.print(f"[magenta]🎭 Adding emotion context:[/magenta] [dim]{', '.join(emotions)}[/dim]")
+        else:
+            message_with_context = message_text
         
         # Step 2: Check if we have a screenshot (captured earlier)
         if screenshot_path:
@@ -977,10 +747,16 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
         else:
             console.print("[yellow]⏭️  No screenshot (audio-only mode)[/yellow]")
 
-        # Step 3: Check if user wants Deep Research mode
+        # Step 2: Check if user wants Deep Research mode (check original transcript, not emotion context)
         wants_deep_research = "research" in message_text.lower()
         if wants_deep_research:
             console.print("[bold magenta]🔬 'research' detected - will enable Deep Research mode[/bold magenta]")
+        
+        # Step 3: Check if we have a screenshot (captured earlier)
+        if screenshot_path:
+            console.print(f"[cyan]📸 Using pre-captured screenshot:[/cyan] [dim]{screenshot_path}[/dim]")
+        else:
+            console.print("[yellow]⏭️  No screenshot (audio-only mode)[/yellow]")
 
         # Step 4: Find and switch to Perplexity tab
         global PERPLEXITY_WINDOW_HANDLE
@@ -1120,10 +896,10 @@ def send_to_perplexity(driver, wait, audio_path, screenshot_path=None):
             console.print(f"[yellow]⚠[/yellow] Could not set search mode: {e}")
             console.print("[dim]   Continuing with current mode...[/dim]")
 
-        # Step 6: Type the transcribed message
-        console.print(f"[bold]⌨️  Typing message:[/bold] [cyan]\"{message_text}\"[/cyan]")
+        # Step 6: Type the transcribed message (with emotion context if available)
+        console.print(f"[bold]⌨️  Typing message:[/bold] [cyan]\"{message_with_context}\"[/cyan]")
         chat_input.click()
-        chat_input.send_keys(message_text)
+        chat_input.send_keys(message_with_context)
         console.print("[green]✓[/green] Message typed!")
 
         # Step 6: Upload screenshot AFTER typing message
@@ -1386,16 +1162,16 @@ def check_key_match(key, trigger_key_str):
         pass  # Key object doesn't have expected attributes
     return False
 
-def on_press(key, recorder):
+def on_press(key, audio_processor):
     """Handle key press events - start recording."""
     global REGION_SELECTOR
     
     try:
         # Check for screenshot + audio trigger
         if check_key_match(key, TRIGGER_KEY_WITH_SCREENSHOT):
-            if not recorder.is_recording:
+            if not audio_processor.recorder.is_recording:
                 play_double_beep()  # Audio feedback
-                recorder.capture_screenshot = True
+                audio_processor.recorder.capture_screenshot = True
                 key_display = TRIGGER_KEY_WITH_SCREENSHOT.replace('_r', ' (Right)').replace('_', ' ').title()
                 console.print("\n[dim]" + "="*60 + "[/dim]")
                 console.print(f"[bold cyan]🦶 {key_display} PRESSED[/bold cyan] - Recording with screenshot...")
@@ -1407,40 +1183,40 @@ def on_press(key, recorder):
                 
                 # Store current window info as fallback (in case no region is selected)
                 window_id, app_name, bounds = get_frontmost_window_id()
-                recorder.fallback_window_id = window_id
-                recorder.fallback_app_name = app_name
-                recorder.fallback_bounds = bounds
+                audio_processor.recorder.fallback_window_id = window_id
+                audio_processor.recorder.fallback_app_name = app_name
+                audio_processor.recorder.fallback_bounds = bounds
                 
                 # Start recording audio (no screenshot yet - will capture on release)
-                recorder.start_recording(take_screenshot=False)
+                audio_processor.start_recording(take_screenshot=False)
         
         # Check for audio-only trigger
         elif check_key_match(key, TRIGGER_KEY_AUDIO_ONLY):
-            if not recorder.is_recording:
+            if not audio_processor.recorder.is_recording:
                 play_start_beep()  # Audio feedback
-                recorder.capture_screenshot = False
+                audio_processor.recorder.capture_screenshot = False
                 key_display = TRIGGER_KEY_AUDIO_ONLY.replace('_r', ' (Right)').replace('_', ' ').title()
                 console.print("\n[dim]" + "="*60 + "[/dim]")
                 console.print(f"[bold yellow]🦶 {key_display} PRESSED[/bold yellow] - Recording audio only...")
                 console.print("[dim]" + "="*60 + "[/dim]")
-                recorder.start_recording(take_screenshot=False)
+                audio_processor.start_recording(take_screenshot=False)
     except Exception as e:
         print(f"Error in key press handler: {e}")
 
-def on_release(key, recorder, driver, wait):
+def on_release(key, audio_processor, driver, wait):
     """Handle key release events - stop recording and process."""
     global REGION_SELECTOR
     
     try:
         # Check if either trigger key was released
         if check_key_match(key, TRIGGER_KEY_WITH_SCREENSHOT) or check_key_match(key, TRIGGER_KEY_AUDIO_ONLY):
-            if recorder.is_recording:
+            if audio_processor.recorder.is_recording:
                 play_stop_beep()  # Audio feedback
                 screenshot_path = None
                 
                 # Handle screenshot capture (only for screenshot mode)
                 try:
-                    if recorder.capture_screenshot:
+                    if audio_processor.recorder.capture_screenshot:
                         # Stop the region selector
                         if REGION_SELECTOR:
                             REGION_SELECTOR.stop()
@@ -1461,22 +1237,22 @@ def on_release(key, recorder, driver, wait):
                             
                             # No region selected or region capture failed - use window fallback
                             if not screenshot_path:
-                                console.print(f"[cyan]📸 Capturing window:[/cyan] {getattr(recorder, 'fallback_app_name', 'unknown')}...")
+                                console.print(f"[cyan]📸 Capturing window:[/cyan] {getattr(audio_processor.recorder, 'fallback_app_name', 'unknown')}...")
                                 screenshot_path = capture_screenshot_func(
-                                    getattr(recorder, 'fallback_window_id', None),
-                                    getattr(recorder, 'fallback_app_name', None),
-                                    getattr(recorder, 'fallback_bounds', None)
+                                    getattr(audio_processor.recorder, 'fallback_window_id', None),
+                                    getattr(audio_processor.recorder, 'fallback_app_name', None),
+                                    getattr(audio_processor.recorder, 'fallback_bounds', None)
                                 )
                                 if screenshot_path:
                                     console.print("[green]✓ Window screenshot captured![/green]")
                                 else:
                                     console.print("[yellow]⚠ Screenshot capture failed[/yellow]")
                     
-                    # Stop audio recording
-                    audio_path = recorder.stop_recording()
+                    # Stop audio recording and process (transcription + emotion)
+                    result = audio_processor.stop_recording_and_process()
                     
-                    if audio_path:
-                        send_to_perplexity(driver, wait, audio_path, screenshot_path)
+                    if result:
+                        send_to_perplexity(driver, wait, result, screenshot_path)
                         
                 finally:
                     # Ensure region selector is cleaned up even if exception occurred
@@ -1581,8 +1357,8 @@ try:
     console.print(f"[green]✓[/green] Connected! Current URL: [dim]{driver.current_url}[/dim]")
     wait = WebDriverWait(driver, 20)
     
-    # Create audio recorder
-    recorder = AudioRecorder()
+    # Create audio processor
+    audio_processor = AudioProcessor()
     
     # Format the key names nicely for display
     key1_display = TRIGGER_KEY_WITH_SCREENSHOT.replace('_r', ' (Right)').replace('_', ' ').title()
@@ -1604,8 +1380,8 @@ try:
     
     # Set up keyboard listener with both press and release handlers
     with keyboard.Listener(
-        on_press=lambda key: on_press(key, recorder),
-        on_release=lambda key: on_release(key, recorder, driver, wait)
+        on_press=lambda key: on_press(key, audio_processor),
+        on_release=lambda key: on_release(key, audio_processor, driver, wait)
     ) as listener:
         listener.join()
         

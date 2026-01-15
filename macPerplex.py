@@ -1341,12 +1341,45 @@ console.print("[bold]🔗 Checking for Chrome with remote debugging...[/bold]")
 
 # First, check if Chrome is running in debug mode
 def check_chrome_debug_mode():
-    """Check if Chrome is running with remote debugging on port 9222."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.settimeout(2)
-    result = sock.connect_ex(('127.0.0.1', 9222))
-    sock.close()
-    return result == 0
+    """
+    Check if *Chrome DevTools* is reachable on port 9222.
+
+    Note: A plain TCP connect can yield false-positives if some other process is
+    listening on 9222. We verify by querying the DevTools HTTP endpoint.
+    """
+    # 1) Fast TCP check
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1.0)
+        result = sock.connect_ex(("127.0.0.1", 9222))
+        sock.close()
+        if result != 0:
+            return False
+    except OSError:
+        return False
+
+    # 2) Verify it's actually Chrome DevTools
+    try:
+        import json
+        import urllib.request
+
+        with urllib.request.urlopen("http://127.0.0.1:9222/json/version", timeout=1.5) as resp:
+            if resp.status != 200:
+                return False
+            data = json.loads(resp.read().decode("utf-8"))
+
+        # Typical keys: "Browser", "webSocketDebuggerUrl"
+        browser = (data.get("Browser") or "").lower()
+        ws_url = data.get("webSocketDebuggerUrl") or ""
+        if "chrome" not in browser:
+            return False
+        if not ws_url.startswith("ws://"):
+            return False
+        return True
+    except Exception:
+        # Anything unexpected -> treat as "not in debug mode" so we show the
+        # startup instructions instead of failing later with webdriver attach.
+        return False
 
 if not check_chrome_debug_mode():
     console.print("\n[bold red]❌ ERROR: Chrome is not running in debug mode![/bold red]")

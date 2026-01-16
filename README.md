@@ -26,7 +26,7 @@ pip install -r requirements.txt
 ### Option 2: Install Specific Version
 ```bash
 # Install directly from GitHub (requires git)
-pip install git+https://github.com/sunnypsmith/macPerplex.git@v1.0.0
+pip install git+https://github.com/sunnypsmith/macPerplex.git@v1.1.1
 ```
 
 ## Quick Start

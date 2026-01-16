@@ -8,16 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+### Coming soon
+- Coming soon: Edit transcription before sending
+- Coming soon: Prompt templates
+- Coming soon: Response capture
+
+## [1.1.1] - 2026-01-16
+
+### Added
 - **Voice emotion analysis** with Hume.ai integration
   - Analyzes voice tone, pitch, and intensity
   - Detects 48 emotions (frustration, excitement, confusion, etc.)
   - Adds top N emotions as context to Perplexity prompts
   - Runs in parallel with transcription (no added latency)
   - Configurable via ENABLE_EMOTION_ANALYSIS
-- Modular audio processing (audio_processor.py)
+- Modular audio processing (`audio_processor.py`)
   - Clean separation of audio handling
   - Async parallel processing with asyncio
   - Easier to test and maintain
+- Debug output for emotion threshold tuning (shows top detected emotion scores even if filtered out)
+
+### Fixed
+- Circular import between `macPerplex.py` and `audio_processor.py` (removed dead screenshot code)
+- False-positive detection of Chrome remote debugging (now verifies DevTools endpoint, not just open port)
 
 ## [1.1.0] - 2026-01-12
 
@@ -91,9 +109,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Permission setup guide for macOS
 - USB foot pedal configuration guide
 - Troubleshooting section
-
-## [Unreleased]
-- Coming soon: Edit transcription before sending
-- Coming soon: Prompt templates
-- Coming soon: Response capture
 

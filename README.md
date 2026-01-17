@@ -122,6 +122,31 @@ Set in `config.py`:
 - More empathetic/appropriate answers
 - Especially helpful when frustrated or confused
 
+### Prompt Cleanup (Optional - Groq)
+
+macPerplex can optionally send the raw transcription to Groq for **cleanup-only** rewriting before submitting to Perplexity:
+
+- Fixes punctuation/casing/spacing
+- Removes filler words (um/uh/like)
+- **Does not expand** or add assumptions
+
+**Configuration (in `config.py`):**
+- `ENABLE_PROMPT_CLEANUP = True/False`
+- `GROQ_API_KEY` - Get from `https://console.groq.com/keys`
+- `GROQ_BASE_URL` (default: `https://api.groq.com/openai/v1`)
+- `GROQ_CLEANUP_MODEL` (default: `meta-llama/llama-4-scout-17b-16e-instruct`)
+- `GROQ_TIMEOUT_S` (default: `2.5`)
+
+### Response Formatting Hint (Optional)
+
+If enabled, macPerplex appends a short instruction to every prompt to encourage a quick summary first:
+
+- “Start with a 1–2 sentence TL;DR, then give the full answer with details.”
+
+**Configuration (in `config.py`):**
+- `ENABLE_RESPONSE_FORMAT_HINT = True/False`
+- `RESPONSE_FORMAT_APPEND_TEXT` (the exact text appended to every prompt)
+
 ## Configuration
 
 Edit `config.py` to customize:

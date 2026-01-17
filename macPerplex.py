@@ -34,6 +34,13 @@ from audio_processor import (
     play_submit_beep
 )
 
+# Optional: prompt cleanup (Groq)
+try:
+    from prompt_cleanup import CleanupConfig, cleanup_prompt_via_groq
+except Exception:
+    CleanupConfig = None  # type: ignore
+    cleanup_prompt_via_groq = None  # type: ignore
+
 # Rich console for beautiful output
 console = Console()
 
@@ -50,6 +57,27 @@ except ImportError:
     print("Please create config.py with your settings.")
     print("See config.py.example for reference.")
     exit(1)
+
+# Optional config for Groq prompt cleanup (keep backwards compatible)
+try:
+    import config as _cfg
+
+    ENABLE_PROMPT_CLEANUP = bool(getattr(_cfg, "ENABLE_PROMPT_CLEANUP", False))
+    GROQ_API_KEY = str(getattr(_cfg, "GROQ_API_KEY", "") or "")
+    GROQ_BASE_URL = str(getattr(_cfg, "GROQ_BASE_URL", "https://api.groq.com/openai/v1") or "https://api.groq.com/openai/v1")
+    GROQ_CLEANUP_MODEL = str(getattr(_cfg, "GROQ_CLEANUP_MODEL", "llama3-8b-8192") or "llama3-8b-8192")
+    GROQ_TIMEOUT_S = float(getattr(_cfg, "GROQ_TIMEOUT_S", 2.5) or 2.5)
+
+    ENABLE_RESPONSE_FORMAT_HINT = bool(getattr(_cfg, "ENABLE_RESPONSE_FORMAT_HINT", False))
+    RESPONSE_FORMAT_APPEND_TEXT = str(getattr(_cfg, "RESPONSE_FORMAT_APPEND_TEXT", "") or "")
+except Exception:
+    ENABLE_PROMPT_CLEANUP = False
+    GROQ_API_KEY = ""
+    GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+    GROQ_CLEANUP_MODEL = "llama3-8b-8192"
+    GROQ_TIMEOUT_S = 2.5
+    ENABLE_RESPONSE_FORMAT_HINT = False
+    RESPONSE_FORMAT_APPEND_TEXT = ""
 
 # Cache for Perplexity window handle (so we don't search every time)
 PERPLEXITY_WINDOW_HANDLE = None
@@ -728,10 +756,37 @@ def send_to_perplexity(driver, wait, result, screenshot_path=None):
             return
         
         # Step 1: Get transcript and emotion data from result
-        message_text = result['transcript']
+        raw_transcript = result['transcript']
+        message_text = raw_transcript
         emotions = result.get('emotions')
         emotion_scores = result.get('emotion_scores')
         audio_path = result.get('audio_path')
+
+        # Optional: cleanup transcript via Groq before sending
+        if ENABLE_PROMPT_CLEANUP:
+            if not GROQ_API_KEY or GROQ_API_KEY.startswith("your-"):
+                console.print("[yellow]⚠ Prompt cleanup enabled, but GROQ_API_KEY is not set. Sending raw transcript.[/yellow]")
+            elif not cleanup_prompt_via_groq or not CleanupConfig:
+                console.print("[yellow]⚠ Prompt cleanup module unavailable. Sending raw transcript.[/yellow]")
+            else:
+                console.print("[cyan]🧹 Cleaning up transcript (Groq)...[/cyan]")
+                cleaned = cleanup_prompt_via_groq(
+                    raw_transcript,
+                    CleanupConfig(
+                        api_key=GROQ_API_KEY,
+                        base_url=GROQ_BASE_URL,
+                        model=GROQ_CLEANUP_MODEL,
+                        timeout_s=GROQ_TIMEOUT_S,
+                    ),
+                )
+                if cleaned and cleaned.strip():
+                    message_text = cleaned
+                    if message_text != raw_transcript:
+                        console.print("[green]✓[/green] Transcript cleaned")
+                        console.print(f"[dim]   Before: {raw_transcript}[/dim]")
+                        console.print(f"[dim]   After:  {message_text}[/dim]")
+                else:
+                    console.print("[yellow]⚠ Prompt cleanup failed/timeout. Sending raw transcript.[/yellow]")
         
         # Add emotion context to message if emotions detected (structured JSON format)
         if emotions and emotion_scores and ENABLE_EMOTION_ANALYSIS:
@@ -759,6 +814,14 @@ def send_to_perplexity(driver, wait, result, screenshot_path=None):
         else:
             message_with_context = message_text
             console.print(f"[dim]   No emotion context (emotions={emotions}, scores={emotion_scores}, enabled={ENABLE_EMOTION_ANALYSIS})[/dim]")
+
+        # Optional: append response formatting hint (avoid newlines to prevent accidental submits)
+        if ENABLE_RESPONSE_FORMAT_HINT and RESPONSE_FORMAT_APPEND_TEXT:
+            append_text = " ".join(RESPONSE_FORMAT_APPEND_TEXT.strip().split())
+            if append_text:
+                joiner = " " if not message_with_context.endswith((" ", "\t")) else ""
+                message_with_context = f"{message_with_context}{joiner}{append_text}"
+                console.print("[dim]   🧾 Appended response format hint (TL;DR + full answer)[/dim]")
         
         # Step 2: Check if we have a screenshot (captured earlier)
         if screenshot_path:
@@ -767,7 +830,8 @@ def send_to_perplexity(driver, wait, result, screenshot_path=None):
             console.print("[yellow]⏭️  No screenshot (audio-only mode)[/yellow]")
 
         # Step 3: Check if user wants Deep Research mode (check original transcript, not emotion context)
-        wants_deep_research = "research" in message_text.lower()
+        # Use *raw transcript* for mode switching decisions (avoid any chance a model alters keywords)
+        wants_deep_research = "research" in raw_transcript.lower()
         if wants_deep_research:
             console.print("[bold magenta]🔬 'research' detected - will enable Deep Research mode[/bold magenta]")
 

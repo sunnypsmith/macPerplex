@@ -29,6 +29,28 @@ ENABLE_EMOTION_ANALYSIS = False  # Set to True to enable
 EMOTION_TOP_N = 3  # Include top N emotions in context (e.g., top 3: frustrated, confused, focused)
 EMOTION_MIN_SCORE = 0.3  # Only include emotions with confidence score > 0.3 (0.0-1.0 range)
 
+# ============================================================================
+# Prompt Cleanup (Optional - Groq)
+# ============================================================================
+# If enabled, macPerplex will send the raw transcript to Groq and receive a
+# cleaned-up version (punctuation/casing/filler removal) before submitting it
+# to Perplexity. This is "cleanup-only" (no expansion / no new facts).
+#
+# Get your key from: https://console.groq.com/keys
+ENABLE_PROMPT_CLEANUP = False  # Set to True to enable
+GROQ_API_KEY = "your-groq-api-key-here"
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+GROQ_CLEANUP_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+GROQ_TIMEOUT_S = 2.5
+
+# ============================================================================
+# Response Formatting Hint (Optional)
+# ============================================================================
+# If enabled, macPerplex will append a short instruction to every prompt to
+# encourage a quick TL;DR followed by the full answer.
+ENABLE_RESPONSE_FORMAT_HINT = False  # Set to True to enable
+RESPONSE_FORMAT_APPEND_TEXT = "Start with a 1–2 sentence TL;DR, then give the full answer with details."
+
 # Transcription Language (ISO 639-1 code)
 # Constrains Whisper to a specific language for better accuracy and prevents
 # unexpected languages from appearing in transcription

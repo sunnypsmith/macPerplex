@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Optional Groq-based **prompt cleanup** (cleanup-only rewrite of transcript before submission)
+- Optional **response formatting hint** appended to prompts (TL;DR first, then full answer)
 
 ### Changed
 

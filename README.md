@@ -92,6 +92,8 @@ The app automatically:
 - Switches back to normal Search mode if you don't say "research"
 - Each query sets its own mode independently
 
+**Note:** Perplexity's UI can vary (and sometimes the **Research** button is not present). If macPerplex can't find Research mode, it will log a warning and continue in normal Search mode.
+
 ### Voice Emotion Analysis (Optional)
 
 macPerplex can analyze your voice tone and add emotional context to queries using [Hume.ai](https://hume.ai):
@@ -129,6 +131,7 @@ macPerplex can optionally send the raw transcription to Groq for **cleanup-only*
 - Fixes punctuation/casing/spacing
 - Removes filler words (um/uh/like)
 - **Does not expand** or add assumptions
+- Includes guardrails to avoid meaning drift (e.g., question→statement or dropping important context)
 
 **Configuration (in `config.py`):**
 - `ENABLE_PROMPT_CLEANUP = True/False`
@@ -146,6 +149,27 @@ If enabled, macPerplex appends a short instruction to every prompt to encourage 
 **Configuration (in `config.py`):**
 - `ENABLE_RESPONSE_FORMAT_HINT = True/False`
 - `RESPONSE_FORMAT_APPEND_TEXT` (the exact text appended to every prompt)
+
+### TL;DR Markers + Local macOS TTS (Optional)
+
+If enabled, macPerplex will request a **marker-formatted response**, then **parse out the TL;DR** and speak only that portion using macOS built-in TTS (`say`).
+
+**Desired response structure:**
+```
+<<<TLDR>>> <short summary> <<<FULL>>> <full answer> <<<END>>>
+```
+
+**Configuration (in `config.py`):**
+- `ENABLE_TLDR_MARKERS = True/False`
+- `TLDR_MARKER`, `FULL_MARKER`, `END_MARKER` (the exact marker strings)
+- `TLDR_SENTENCES` (how many sentences to request for the TL;DR)
+- `ENABLE_LOCAL_TTS = True/False`
+- `LOCAL_TTS_VOICE` (empty = system default)
+- `LOCAL_TTS_WPM` (default: 200)
+- `LOCAL_TTS_MAX_CHARS` (safety cap for spoken TL;DR)
+- `LOCAL_TTS_BLOCKING` (False = speak asynchronously)
+- `PERPLEXITY_RESPONSE_WAIT_S` (how long to wait for the answer before skipping TTS)
+- `PERPLEXITY_RESPONSE_SETTLE_S` (how long the response text must remain unchanged before speaking)
 
 ## Configuration
 

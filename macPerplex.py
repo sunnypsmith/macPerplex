@@ -41,6 +41,28 @@ except Exception:
     CleanupConfig = None  # type: ignore
     cleanup_prompt_via_groq = None  # type: ignore
 
+# Optional: response parsing + local TTS
+try:
+    from response_tts import (
+        TLDRFormatConfig,
+        LocalTTSConfig,
+        count_response_nodes,
+        extract_sections,
+        extract_tldr,
+        extract_tldr_lenient,
+        speak_local_mac,
+        wait_for_latest_response_text,
+    )
+except Exception:
+    TLDRFormatConfig = None  # type: ignore
+    LocalTTSConfig = None  # type: ignore
+    count_response_nodes = None  # type: ignore
+    extract_sections = None  # type: ignore
+    extract_tldr = None  # type: ignore
+    extract_tldr_lenient = None  # type: ignore
+    speak_local_mac = None  # type: ignore
+    wait_for_latest_response_text = None  # type: ignore
+
 # Rich console for beautiful output
 console = Console()
 
@@ -70,6 +92,21 @@ try:
 
     ENABLE_RESPONSE_FORMAT_HINT = bool(getattr(_cfg, "ENABLE_RESPONSE_FORMAT_HINT", False))
     RESPONSE_FORMAT_APPEND_TEXT = str(getattr(_cfg, "RESPONSE_FORMAT_APPEND_TEXT", "") or "")
+
+    # Optional: marker-based TL;DR formatting + local TTS
+    ENABLE_TLDR_MARKERS = bool(getattr(_cfg, "ENABLE_TLDR_MARKERS", False))
+    TLDR_MARKER = str(getattr(_cfg, "TLDR_MARKER", "<<<TLDR>>>") or "<<<TLDR>>>")
+    FULL_MARKER = str(getattr(_cfg, "FULL_MARKER", "<<<FULL>>>") or "<<<FULL>>>")
+    END_MARKER = str(getattr(_cfg, "END_MARKER", "<<<END>>>") or "<<<END>>>")
+    TLDR_SENTENCES = int(getattr(_cfg, "TLDR_SENTENCES", 2) or 2)
+
+    ENABLE_LOCAL_TTS = bool(getattr(_cfg, "ENABLE_LOCAL_TTS", False))
+    LOCAL_TTS_VOICE = str(getattr(_cfg, "LOCAL_TTS_VOICE", "") or "")
+    LOCAL_TTS_WPM = int(getattr(_cfg, "LOCAL_TTS_WPM", 200) or 200)
+    LOCAL_TTS_MAX_CHARS = int(getattr(_cfg, "LOCAL_TTS_MAX_CHARS", 700) or 700)
+    LOCAL_TTS_BLOCKING = bool(getattr(_cfg, "LOCAL_TTS_BLOCKING", False))
+    PERPLEXITY_RESPONSE_WAIT_S = float(getattr(_cfg, "PERPLEXITY_RESPONSE_WAIT_S", 60.0) or 60.0)
+    PERPLEXITY_RESPONSE_SETTLE_S = float(getattr(_cfg, "PERPLEXITY_RESPONSE_SETTLE_S", 1.0) or 1.0)
 except Exception:
     ENABLE_PROMPT_CLEANUP = False
     GROQ_API_KEY = ""
@@ -78,6 +115,20 @@ except Exception:
     GROQ_TIMEOUT_S = 2.5
     ENABLE_RESPONSE_FORMAT_HINT = False
     RESPONSE_FORMAT_APPEND_TEXT = ""
+
+    ENABLE_TLDR_MARKERS = False
+    TLDR_MARKER = "<<<TLDR>>>"
+    FULL_MARKER = "<<<FULL>>>"
+    END_MARKER = "<<<END>>>"
+    TLDR_SENTENCES = 2
+
+    ENABLE_LOCAL_TTS = False
+    LOCAL_TTS_VOICE = ""
+    LOCAL_TTS_WPM = 200
+    LOCAL_TTS_MAX_CHARS = 700
+    LOCAL_TTS_BLOCKING = False
+    PERPLEXITY_RESPONSE_WAIT_S = 60.0
+    PERPLEXITY_RESPONSE_SETTLE_S = 1.0
 
 # Cache for Perplexity window handle (so we don't search every time)
 PERPLEXITY_WINDOW_HANDLE = None
@@ -764,6 +815,119 @@ def send_to_perplexity(driver, wait, result, screenshot_path=None):
 
         # Optional: cleanup transcript via Groq before sending
         if ENABLE_PROMPT_CLEANUP:
+            def _looks_like_question(s: str) -> bool:
+                s = (s or "").strip()
+                if not s:
+                    return False
+                if s.endswith("?"):
+                    return True
+                low = s.lower()
+                # Common spoken question openers (STT sometimes drops '?')
+                return low.startswith(
+                    (
+                        "can you",
+                        "could you",
+                        "would you",
+                        "will you",
+                        "what ",
+                        "why ",
+                        "how ",
+                        "when ",
+                        "where ",
+                        "who ",
+                        "is ",
+                        "are ",
+                        "do ",
+                        "does ",
+                        "did ",
+                        "should ",
+                        "can ",
+                        "could ",
+                        "would ",
+                        "will ",
+                    )
+                )
+
+            def _keyword_recall_ok(raw: str, cleaned: str) -> bool:
+                """
+                Heuristic guardrail against cleanup that drops important context.
+                We compute a simple keyword recall over non-trivial tokens.
+                """
+                import re
+
+                def tokens(s: str) -> set[str]:
+                    s = (s or "").lower()
+                    # Keep words/numbers/identifiers (including underscores/slashes/dashes)
+                    parts = re.findall(r"[a-z0-9_./-]+", s)
+                    stop = {
+                        "the",
+                        "and",
+                        "that",
+                        "this",
+                        "with",
+                        "from",
+                        "have",
+                        "has",
+                        "had",
+                        "what",
+                        "when",
+                        "where",
+                        "which",
+                        "who",
+                        "whom",
+                        "why",
+                        "how",
+                        "can",
+                        "could",
+                        "would",
+                        "should",
+                        "will",
+                        "do",
+                        "does",
+                        "did",
+                        "a",
+                        "an",
+                        "to",
+                        "of",
+                        "in",
+                        "on",
+                        "for",
+                        "at",
+                        "it",
+                        "is",
+                        "are",
+                        "was",
+                        "were",
+                        "be",
+                        "been",
+                        "being",
+                        "i",
+                        "me",
+                        "my",
+                        "we",
+                        "our",
+                        "you",
+                        "your",
+                        "they",
+                        "their",
+                        "them",
+                    }
+                    # Keep "contentful" tokens: length>3 OR contains digit/symbol (e.g. ubuntu, smartctl, /dev/sda)
+                    out = set()
+                    for p in parts:
+                        if p in stop:
+                            continue
+                        if len(p) > 3 or any(ch.isdigit() for ch in p) or any(ch in p for ch in ("_", "/", "-", ".")):
+                            out.add(p)
+                    return out
+
+                raw_set = tokens(raw)
+                if not raw_set:
+                    return True
+                cleaned_set = tokens(cleaned)
+                recall = len(raw_set & cleaned_set) / max(1, len(raw_set))
+                return recall >= 0.70
+
             if not GROQ_API_KEY or GROQ_API_KEY.startswith("your-"):
                 console.print("[yellow]⚠ Prompt cleanup enabled, but GROQ_API_KEY is not set. Sending raw transcript.[/yellow]")
             elif not cleanup_prompt_via_groq or not CleanupConfig:
@@ -780,11 +944,27 @@ def send_to_perplexity(driver, wait, result, screenshot_path=None):
                     ),
                 )
                 if cleaned and cleaned.strip():
-                    message_text = cleaned
-                    if message_text != raw_transcript:
-                        console.print("[green]✓[/green] Transcript cleaned")
-                        console.print(f"[dim]   Before: {raw_transcript}[/dim]")
-                        console.print(f"[dim]   After:  {message_text}[/dim]")
+                    # Safety: if the raw transcript is a question, do not allow cleanup to
+                    # turn it into a declarative/advice statement.
+                    raw_is_q = _looks_like_question(raw_transcript)
+                    cleaned_is_q = _looks_like_question(cleaned)
+                    length_ratio = (len(cleaned.strip()) / max(1, len(raw_transcript.strip()))) if raw_transcript else 1.0
+                    recall_ok = _keyword_recall_ok(raw_transcript, cleaned)
+
+                    if raw_is_q and not cleaned_is_q:
+                        console.print("[yellow]⚠ Prompt cleanup changed a question into a statement. Sending raw transcript.[/yellow]")
+                        console.print(f"[dim]   Raw:     {raw_transcript}[/dim]")
+                        console.print(f"[dim]   Cleaned:  {cleaned}[/dim]")
+                    elif length_ratio < 0.60 or not recall_ok:
+                        console.print("[yellow]⚠ Prompt cleanup removed too much context. Sending raw transcript.[/yellow]")
+                        console.print(f"[dim]   Raw:     {raw_transcript}[/dim]")
+                        console.print(f"[dim]   Cleaned:  {cleaned}[/dim]")
+                    else:
+                        message_text = cleaned
+                        if message_text != raw_transcript:
+                            console.print("[green]✓[/green] Transcript cleaned")
+                            console.print(f"[dim]   Before: {raw_transcript}[/dim]")
+                            console.print(f"[dim]   After:  {message_text}[/dim]")
                 else:
                     console.print("[yellow]⚠ Prompt cleanup failed/timeout. Sending raw transcript.[/yellow]")
         
@@ -816,12 +996,27 @@ def send_to_perplexity(driver, wait, result, screenshot_path=None):
             console.print(f"[dim]   No emotion context (emotions={emotions}, scores={emotion_scores}, enabled={ENABLE_EMOTION_ANALYSIS})[/dim]")
 
         # Optional: append response formatting hint (avoid newlines to prevent accidental submits)
-        if ENABLE_RESPONSE_FORMAT_HINT and RESPONSE_FORMAT_APPEND_TEXT:
-            append_text = " ".join(RESPONSE_FORMAT_APPEND_TEXT.strip().split())
+        append_text_source = RESPONSE_FORMAT_APPEND_TEXT
+        if ENABLE_TLDR_MARKERS and TLDRFormatConfig:
+            try:
+                append_text_source = TLDRFormatConfig(
+                    tldr_marker=TLDR_MARKER,
+                    full_marker=FULL_MARKER,
+                    end_marker=END_MARKER,
+                    tldr_sentences=TLDR_SENTENCES,
+                ).build_append_hint()
+            except Exception:
+                append_text_source = RESPONSE_FORMAT_APPEND_TEXT
+
+        if ENABLE_RESPONSE_FORMAT_HINT and append_text_source:
+            append_text = " ".join(str(append_text_source).strip().split())
             if append_text:
                 joiner = " " if not message_with_context.endswith((" ", "\t")) else ""
                 message_with_context = f"{message_with_context}{joiner}{append_text}"
-                console.print("[dim]   🧾 Appended response format hint (TL;DR + full answer)[/dim]")
+                if ENABLE_TLDR_MARKERS:
+                    console.print("[dim]   🧾 Appended TL;DR marker format hint[/dim]")
+                else:
+                    console.print("[dim]   🧾 Appended response format hint (TL;DR + full answer)[/dim]")
         
         # Step 2: Check if we have a screenshot (captured earlier)
         if screenshot_path:
@@ -944,9 +1139,80 @@ def send_to_perplexity(driver, wait, result, screenshot_path=None):
         # Step 5: Set search mode (Search vs Research) for this query
         # It's a segmented control: click "Search" for normal, "Research" for deep research
         try:
-            # Check which mode is currently active
-            research_button = driver.find_element(By.XPATH, "//button[@aria-label='Research' and @role='radio']")
-            is_research_on = (research_button.get_attribute("data-state") == "checked")
+            def _find_mode_button(label: str):
+                # Try a few selector variants (Perplexity UI sometimes changes role/structure)
+                xpaths = [
+                    f"//button[@aria-label='{label}' and @role='radio']",
+                    f"//button[@aria-label='{label}']",
+                    f"//div[@role='radiogroup']//button[@aria-label='{label}']",
+                    f"//div[@role='radiogroup']//button[normalize-space()='{label}']",
+                    f"//button[normalize-space()='{label}']",
+                ]
+                for xp in xpaths:
+                    try:
+                        candidates = driver.find_elements(By.XPATH, xp)
+                        for el in candidates:
+                            try:
+                                if el.is_displayed():
+                                    return el
+                            except Exception:
+                                continue
+                    except Exception:
+                        continue
+                return None
+
+            def _find_mode_button_contains(substr: str):
+                """Find a button whose aria-label contains a substring (case-insensitive)."""
+                s = (substr or "").strip().lower()
+                if not s:
+                    return None
+                xp = (
+                    "//button[contains(translate(@aria-label,"
+                    " 'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz'),"
+                    f" '{s}')]"
+                )
+                try:
+                    candidates = driver.find_elements(By.XPATH, xp)
+                except Exception:
+                    candidates = []
+                for el in candidates:
+                    try:
+                        if el.is_displayed():
+                            return el
+                    except Exception:
+                        continue
+                return None
+
+            def _is_checked(btn) -> bool:
+                try:
+                    if (btn.get_attribute("data-state") or "").lower() == "checked":
+                        return True
+                except Exception:
+                    pass
+                try:
+                    if (btn.get_attribute("aria-checked") or "").lower() == "true":
+                        return True
+                except Exception:
+                    pass
+                return False
+
+            # Wait briefly for the segmented control/buttons to exist
+            try:
+                WebDriverWait(driver, 5).until(
+                    lambda d: _find_mode_button("Search") is not None or _find_mode_button("Research") is not None
+                )
+            except Exception:
+                pass
+
+            search_button = _find_mode_button("Search")
+            research_button = _find_mode_button("Research") or _find_mode_button_contains("research")
+
+            if not search_button:
+                # If we can't find Search at all, we can't safely change modes.
+                raise Exception("Search mode button not found (UI may have changed)")
+
+            # If research button isn't present in this UI/account/page, treat as "not available".
+            is_research_on = _is_checked(research_button) if research_button else False
             
             console.print(f"[dim]   Mode currently: {'RESEARCH' if is_research_on else 'SEARCH'}[/dim]")
             console.print(f"[dim]   This query wants: {'RESEARCH' if wants_deep_research else 'SEARCH'}[/dim]")
@@ -954,16 +1220,24 @@ def send_to_perplexity(driver, wait, result, screenshot_path=None):
             # Click the appropriate button if we need to change modes
             if wants_deep_research and not is_research_on:
                 # Switch to Research mode
-                console.print("[magenta]   → Clicking Research button...[/magenta]")
-                research_button.click()
-                time.sleep(0.5)
-                console.print("[green]   ✓[/green] Deep Research mode enabled")
+                if not research_button:
+                    console.print("[yellow]⚠[/yellow] Research mode button not found in UI; continuing in Search mode")
+                else:
+                    console.print("[magenta]   → Clicking Research button...[/magenta]")
+                    try:
+                        research_button.click()
+                    except Exception:
+                        driver.execute_script("arguments[0].click();", research_button)
+                    time.sleep(0.5)
+                    console.print("[green]   ✓[/green] Deep Research mode enabled")
                 
             elif not wants_deep_research and is_research_on:
                 # Switch back to Search mode - click the Search button
                 console.print("[magenta]   → Clicking Search button (normal mode)...[/magenta]")
-                search_button = driver.find_element(By.XPATH, "//button[@aria-label='Search' and @role='radio']")
-                search_button.click()
+                try:
+                    search_button.click()
+                except Exception:
+                    driver.execute_script("arguments[0].click();", search_button)
                 time.sleep(0.5)
                 console.print("[green]   ✓[/green] Normal Search mode enabled")
             else:
@@ -1148,6 +1422,25 @@ def send_to_perplexity(driver, wait, result, screenshot_path=None):
         # Step 7: Click send (no delays needed for audio-only)
         console.print("[bold]🔍 Looking for send button...[/bold]")
         try:
+            # Capture the latest TL;DR-containing block *before* sending, so we don't
+            # accidentally speak the previous answer again when multiple answers exist.
+            prev_response_text = ""
+            if ENABLE_LOCAL_TTS and ENABLE_TLDR_MARKERS and wait_for_latest_response_text:
+                try:
+                    prev_response_text = (
+                        wait_for_latest_response_text(
+                            driver,
+                            timeout_s=1.5,
+                            settle_s=0.2,
+                            poll_s=0.2,
+                            prefer_marker=TLDR_MARKER,
+                            require_all=[TLDR_MARKER],
+                        )
+                        or ""
+                    )
+                except Exception:
+                    prev_response_text = ""
+
             send_button = wait.until(
                 EC.element_to_be_clickable((By.XPATH, "//button[@aria-label='Submit']"))
             )
@@ -1171,8 +1464,62 @@ def send_to_perplexity(driver, wait, result, screenshot_path=None):
             # Wait a bit to see if message was sent
             console.print("[dim]Waiting for message to send...[/dim]")
             time.sleep(3)
-            
-            console.print("[bold green]✅ Done![/bold green] Check the browser to see the response from Perplexity.")
+
+            # Optional: fetch formatted response and speak TL;DR locally
+            if ENABLE_LOCAL_TTS and wait_for_latest_response_text and extract_tldr and speak_local_mac and TLDRFormatConfig and LocalTTSConfig:
+                console.print("[dim]🔎 Waiting for Perplexity response text (for TL;DR TTS)...[/dim]")
+                # Avoid blocking the whole UX too long. If you want a longer wait, increase the config;
+                # we still cap here to keep things responsive.
+                tts_wait_s = min(float(PERPLEXITY_RESPONSE_WAIT_S), 25.0)
+                response_text = wait_for_latest_response_text(
+                    driver,
+                    timeout_s=tts_wait_s,
+                    settle_s=PERPLEXITY_RESPONSE_SETTLE_S,
+                    prefer_marker=(TLDR_MARKER if ENABLE_TLDR_MARKERS else None),
+                    return_immediately_if_contains=([END_MARKER] if ENABLE_TLDR_MARKERS else None),
+                    exclude_texts=([prev_response_text] if prev_response_text else None),
+                )
+                if response_text:
+                    tldr_cfg = TLDRFormatConfig(
+                        tldr_marker=TLDR_MARKER,
+                        full_marker=FULL_MARKER,
+                        end_marker=END_MARKER,
+                        tldr_sentences=TLDR_SENTENCES,
+                    )
+                    # In marker mode, be strict: only speak if we can actually extract TL;DR.
+                    if ENABLE_TLDR_MARKERS and TLDR_MARKER not in response_text:
+                        console.print("[yellow]⚠[/yellow] TL;DR markers not found in response text; skipping TTS")
+                        tldr_text = ""
+                    else:
+                        # Prefer section parsing when available (more robust)
+                        if extract_sections and ENABLE_TLDR_MARKERS:
+                            tldr_text, _full_text = extract_sections(response_text, tldr_cfg)
+                        else:
+                            tldr_text = extract_tldr(response_text, tldr_cfg)
+
+                        # If strict parsing fails (e.g., FULL/END not present in scraped text),
+                        # fall back to a bounded snippet after TLDR marker so we still speak something useful.
+                        if not tldr_text and ENABLE_TLDR_MARKERS and extract_tldr_lenient:
+                            tldr_text = extract_tldr_lenient(response_text, tldr_cfg)
+                    tts_cfg = LocalTTSConfig(
+                        enabled=True,
+                        voice=LOCAL_TTS_VOICE,
+                        rate_wpm=LOCAL_TTS_WPM,
+                        max_chars=LOCAL_TTS_MAX_CHARS,
+                        block=LOCAL_TTS_BLOCKING,
+                    )
+                    if tldr_text:
+                        spoke = speak_local_mac(tldr_text, tts_cfg)
+                        if spoke:
+                            console.print("[green]✓[/green] Spoke TL;DR via macOS TTS")
+                        else:
+                            console.print("[yellow]⚠[/yellow] Could not invoke macOS TTS (say)")
+                    else:
+                        console.print("[yellow]⚠[/yellow] Could not extract TL;DR from response text; skipping TTS")
+                else:
+                    console.print("[yellow]⚠[/yellow] No response text detected for TTS (timed out or selector mismatch)")
+
+            console.print("[bold green]✅ Done![/bold green]")
             console.print("[dim]" + "="*60 + "[/dim]")
             console.print("[bold]🦶 Ready for next query[/bold] [dim](Left pedal = screenshot, Right pedal = audio only)...[/dim]\n")
             

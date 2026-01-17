@@ -10,10 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Optional Groq-based **prompt cleanup** (cleanup-only rewrite of transcript before submission)
 - Optional **response formatting hint** appended to prompts (TL;DR first, then full answer)
+- Optional **TL;DR markers + local macOS TTS** (parse `<<<TLDR>>>...<<<FULL>>>...<<<END>>>` and speak TL;DR via `say`)
+- `response_tts.py` module for response scraping, marker parsing, and local TTS
+- `dev/` helper scripts for inspecting Perplexity DOM (ignored via `.gitignore`)
 
 ### Changed
+- Deep Research toggle logic: more resilient to Perplexity UI variants (and continues gracefully when Research is not present)
+- Prompt cleanup: hardened to prevent meaning drift (question→statement, or dropping substantive context)
 
 ### Fixed
+- Local TTS parsing bugs (reading FULL section, picking citation bullets instead of answer prose, repeating prior answer on back-to-back prompts)
+- Local TTS response wait robustness (streaming/partial marker handling; avoid indefinite waiting)
 
 ### Coming soon
 - Coming soon: Edit transcription before sending

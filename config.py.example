@@ -51,6 +51,32 @@ GROQ_TIMEOUT_S = 2.5
 ENABLE_RESPONSE_FORMAT_HINT = False  # Set to True to enable
 RESPONSE_FORMAT_APPEND_TEXT = "Start with a 1–2 sentence TL;DR, then give the full answer with details."
 
+# ============================================================================
+# TL;DR Marker Formatting + Local macOS TTS (Optional)
+# ============================================================================
+# If enabled, macPerplex will ask Perplexity to include explicit markers so we
+# can parse the TL;DR portion deterministically and speak ONLY that via local TTS.
+#
+# Example desired response structure:
+# <<<TLDR>>> one short summary <<<FULL>>> full answer ... <<<END>>>
+ENABLE_TLDR_MARKERS = False  # Set to True to enforce marker format
+TLDR_MARKER = "<<<TLDR>>>"
+FULL_MARKER = "<<<FULL>>>"
+END_MARKER = "<<<END>>>"
+TLDR_SENTENCES = 2  # How many sentences to request for TL;DR
+
+# Local macOS TTS (uses built-in `say`)
+ENABLE_LOCAL_TTS = False  # Set True to speak the parsed TL;DR automatically
+LOCAL_TTS_VOICE = ""      # Empty = system default voice (e.g., Reed on your machine)
+LOCAL_TTS_WPM = 200       # Speaking rate in words per minute
+LOCAL_TTS_MAX_CHARS = 700 # Safety cap so TTS doesn't read the whole essay
+LOCAL_TTS_BLOCKING = False  # False = speak asynchronously
+
+# How long to wait for Perplexity to generate a response before giving up on TTS.
+PERPLEXITY_RESPONSE_WAIT_S = 60.0
+# How long the response text must stay unchanged before we consider it "done".
+PERPLEXITY_RESPONSE_SETTLE_S = 1.0
+
 # Transcription Language (ISO 639-1 code)
 # Constrains Whisper to a specific language for better accuracy and prevents
 # unexpected languages from appearing in transcription
